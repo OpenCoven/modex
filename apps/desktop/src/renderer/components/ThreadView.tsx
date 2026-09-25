@@ -130,7 +130,7 @@ function ThinkingItem({ item }: { item: Extract<ThreadItem, { kind: "thinking" }
         <span className="spacer" />
         <span className="chev">{isOpen ? "▾" : "▸"}</span>
       </button>
-      {isOpen && (item.text.trim() ? <div className="thinking-body"><Markdown text={item.text} /></div> : <div className="thinking-body dim">…</div>)}
+      {isOpen && (item.text.trim() ? <div className="thinking-body"><Markdown text={item.text} /></div> : <div className="thinking-body dim">{item.status === "running" ? "…" : "The CLI did not share the reasoning text for this step."}</div>)}
     </div>
   );
 }

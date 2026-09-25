@@ -61,6 +61,7 @@ test("CodexBackend: a turn streams deltas, command + file-change items, approval
   assert.equal(turnStart.params.effort, "high");
   assert.deepEqual((turnStart.params.input as { text: string }[])[0]!.text, "add a note");
   assert.equal(seen.find((s) => s.method === "thread/start")!.params.cwd, "/repo");
+  assert.deepEqual(seen.find((s) => s.method === "thread/start")!.params.config, { model_reasoning_summary: "detailed" });
 
   const n = (method: string, params: Record<string, unknown>) => proc.emitLine({ method, params: { threadId, turnId, ...params } });
   n("item/started", { item: { type: "reasoning", id: "r1", summary: [], content: [] } });
