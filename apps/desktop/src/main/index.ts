@@ -7,6 +7,7 @@ import { Store } from "./engine/store.js";
 import { ThreadRunner } from "./engine/runner.js";
 import * as gitx from "./engine/git.js";
 import { runDemo } from "./engine/demo.js";
+import { openTerminal } from "./engine/open-terminal.js";
 import type { BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -92,8 +93,10 @@ handle("backends:health", async () => {
   return out;
 });
 handle("shell:openPath", async ({ path: p }) => {
-  await shell.openPath(p);
+  const err = await shell.openPath(p);
+  if (err) throw new Error(err);
 });
+handle("shell:openTerminal", ({ path: p }) => openTerminal(p));
 
 function createWindow(): BrowserWindow {
   nativeTheme.themeSource = "dark";

@@ -131,4 +131,5 @@ export interface BridgeCommands {
   "changes:revert": { req: { threadId: string; path: string }; res: ChangesSnapshot };
   "settings:update": { req: Partial<Settings>; res: Settings };
   "shell:openPath": { req: { path: string }; res: void };
+  "shell:openTerminal": { req: { path: string }; res: void };
 }
