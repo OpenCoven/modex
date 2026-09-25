@@ -199,3 +199,19 @@ a { color: var(--accent); }
 .field small.warn { color: var(--warn); }
 .toast { position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); background: #2b1d1d; border: 1px solid rgba(240,107,107,.5); color: #ffd6d6; border-radius: 10px; padding: 8px 12px; display: flex; gap: 10px; align-items: center; max-width: 640px; z-index: 5; }
 .toast button { background: none; border: 0; color: inherit; cursor: pointer; font-size: 16px; }
+
+/* Backend segmented control, plan toggle, effort, shortcuts */
+.segmented { display: inline-flex; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+.segmented button { background: transparent; border: 0; color: var(--fg-1); padding: 3px 10px; border-radius: 6px; cursor: pointer; font-size: 12.5px; }
+.segmented button.on { background: var(--bg-3); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line-2); }
+.segmented button:disabled { cursor: default; opacity: .7; }
+.btn.toggle.on { border-color: var(--accent); color: var(--accent); background: rgba(124, 156, 255, .12); }
+.composer-box.plan { border-color: rgba(124, 156, 255, .55); }
+.composer-warn { color: var(--warn); font-size: 12px; padding: 6px 8px 0; }
+kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; margin-left: 6px; color: var(--fg-1); }
+.btn.primary kbd { color: rgba(255,255,255,.85); border-color: rgba(255,255,255,.3); background: rgba(255,255,255,.12); }
+.pill.backend.claude { color: #e8b48a; border-color: rgba(232, 180, 138, .4); }
+.pill.backend.codex { color: #9fd4b5; border-color: rgba(159, 212, 181, .4); }
+.pill.plan { color: var(--accent); border-color: rgba(124, 156, 255, .45); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.modal code { background: var(--bg-2); padding: 0 5px; border-radius: 4px; }

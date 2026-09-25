@@ -4,12 +4,27 @@ import crypto from "node:crypto";
 import type { AppState, Project, Settings, Thread, ThreadItem } from "../../shared/types.js";
 
 export const DEFAULT_SETTINGS: Settings = {
-  provider: "openai",
-  base_url: "https://api.openai.com/v1",
-  api_key_env: "OPENAI_API_KEY",
-  default_model: "gpt-5-codex",
+  default_backend: "codex",
   default_mode: "agent",
+  default_model: { codex: "", claude: "", mock: "mock" },
+  claude_bin: "claude",
+  codex_bin: "codex",
 };
+
+/** Accepts older state files (pre-CLI-backend settings) and fills in defaults. */
+export function migrateSettings(raw: unknown): Settings {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const model = r.default_model;
+  return {
+    ...DEFAULT_SETTINGS,
+    default_backend: r.default_backend === "claude" || r.default_backend === "codex" || r.default_backend === "mock" ? r.default_backend : DEFAULT_SETTINGS.default_backend,
+    default_mode: r.default_mode === "chat" || r.default_mode === "agent" || r.default_mode === "full-access" ? r.default_mode : DEFAULT_SETTINGS.default_mode,
+    default_model: model && typeof model === "object" ? { ...DEFAULT_SETTINGS.default_model, ...(model as Record<string, string>) } : { ...DEFAULT_SETTINGS.default_model },
+    claude_bin: typeof r.claude_bin === "string" && r.claude_bin ? r.claude_bin : DEFAULT_SETTINGS.claude_bin,
+    codex_bin: typeof r.codex_bin === "string" && r.codex_bin ? r.codex_bin : DEFAULT_SETTINGS.codex_bin,
+    ...(typeof r.mock_script === "string" ? { mock_script: r.mock_script } : {}),
+  };
+}
 
 export function newId(): string {
   return crypto.randomUUID().slice(0, 8);
@@ -37,8 +52,8 @@ export class Store {
       version: 1,
       projects: raw.projects ?? [],
       // Nothing is running when the app starts.
-      threads: (raw.threads ?? []).map((t) => ({ ...t, status: "idle" as const })),
-      settings: { ...DEFAULT_SETTINGS, ...(raw.settings ?? {}) },
+      threads: (raw.threads ?? []).map((t) => ({ ...t, backend: (t as Partial<Thread>).backend ?? ("codex" as const), plan: (t as Partial<Thread>).plan ?? false, status: "idle" as const })),
+      settings: migrateSettings(raw.settings),
     };
   }
 

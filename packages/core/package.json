@@ -1,7 +1,7 @@
 {
   "name": "@modex/core",
-  "version": "0.2.0",
-  "description": "Modex agent engine: model loop, tools (shell/read/list/write/apply_patch), approval policy, macOS sandbox, sessions, AGENTS.md discovery.",
+  "version": "0.3.0",
+  "description": "Modex offline engine: scripted-model loop, tools (shell/read/list/write/apply_patch), approval policy, macOS sandbox, sessions. Real models run through the Claude/Codex CLIs in @modex/desktop.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/src/index.js",

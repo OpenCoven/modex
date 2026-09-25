@@ -48,8 +48,9 @@ export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access"
 
 export interface ModexConfig {
   model: string;
+  /** Only the scripted mock provider remains in-process; real models run through the Claude/Codex CLIs. */
   provider: {
-    name: "openai" | "mock";
+    name: "mock";
     base_url: string;
     api_key_env: string;
   };

@@ -2,8 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { MockProvider, type MockStep, type Provider } from "@modex/core";
-import type { Settings } from "../src/shared/types.js";
+import type { MockStep } from "@modex/core";
 
 export function tmpdir(prefix = "modex-desktop-"): string {
   return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
@@ -21,7 +20,9 @@ export function gitRepo(): string {
   return dir;
 }
 
-/** Provider factory that hands each turn a fresh scripted provider. */
-export function scripted(steps: MockStep[]): (settings: Settings, model: string) => Provider {
-  return () => new MockProvider(steps);
+/** Writes a mock script to a temp file and returns its path. */
+export function writeScript(steps: MockStep[]): string {
+  const file = path.join(tmpdir("modex-script-"), "script.json");
+  fs.writeFileSync(file, JSON.stringify({ steps }));
+  return file;
 }

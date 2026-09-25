@@ -8,17 +8,27 @@ test("store persists projects, threads, settings and items across instances", ()
   const a = new Store(home);
   const p = a.addProject(tmpdir("proj-"));
   assert.equal(a.addProject(p.path).id, p.id, "adding the same path twice is idempotent");
-  a.addThread({ id: "t1", projectId: p.id, title: "x", createdAt: "now", updatedAt: "now", cwd: p.path, mode: "agent", model: "m", status: "running" });
+  a.addThread({ id: "t1", projectId: p.id, title: "x", createdAt: "now", updatedAt: "now", cwd: p.path, backend: "claude", mode: "agent", plan: false, model: "m", status: "running" });
   a.saveItems("t1", [{ id: "i1", kind: "user", text: "hi", at: "now" }]);
-  a.updateSettings({ provider: "mock", mock_script: "/x.json" });
+  a.updateSettings({ default_backend: "mock", mock_script: "/x.json" });
   const b = new Store(home);
   const s = b.snapshot();
   assert.equal(s.projects.length, 1);
   assert.equal(s.threads[0]?.status, "idle", "running threads reset to idle on restart");
-  assert.equal(s.settings.provider, "mock");
-  assert.equal(s.settings.default_model, "gpt-5-codex");
+  assert.equal(s.settings.default_backend, "mock");
+  assert.equal(s.settings.codex_bin, "codex");
+  assert.equal(s.threads[0]?.backend, "claude");
   assert.equal(b.items("t1").length, 1);
   b.removeProject(p.id);
   assert.deepEqual(new Store(home).snapshot().threads, []);
   assert.deepEqual(new Store(home).items("t1"), []);
+});
+
+test("migrateSettings accepts the pre-0.3 API-era settings shape", async () => {
+  const { migrateSettings } = await import("../src/main/engine/store.js");
+  const m = migrateSettings({ provider: "openai", base_url: "https://api.openai.com/v1", api_key_env: "OPENAI_API_KEY", default_model: "gpt-5-codex", default_mode: "chat" });
+  assert.equal(m.default_backend, "codex");
+  assert.equal(m.default_mode, "chat");
+  assert.deepEqual(m.default_model, { codex: "", claude: "", mock: "mock" });
+  assert.equal("provider" in m, false);
 });

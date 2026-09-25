@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Mode, Project, Thread, ThreadItem } from "../../shared/types";
-import { MODES, MODELS } from "../../shared/types";
+import type { BackendId, Mode, ModelInfo, Project, Thread, ThreadItem } from "../../shared/types";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
 
@@ -11,13 +10,16 @@ interface Props {
   onSend: (text: string) => void;
   onStop: () => void;
   onAnswer: (itemId: string, answer: "yes" | "no" | "always") => void;
-  onUpdate: (patch: Partial<Pick<Thread, "mode" | "model" | "title">>) => void;
+  onUpdate: (patch: Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort">>) => void;
   showChanges: boolean;
   onToggleChanges: () => void;
   changedCount: number;
+  models: ModelInfo[];
+  modelsError?: string;
+  inputRef: React.RefObject<HTMLTextAreaElement | null>;
 }
 
-export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, onUpdate, showChanges, onToggleChanges, changedCount }: Props) {
+export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, onUpdate, showChanges, onToggleChanges, changedCount, models, modelsError, inputRef }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
 
@@ -35,6 +37,8 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
           <input className="title-input" value={thread.title} onChange={(e) => onUpdate({ title: e.target.value })} spellCheck={false} />
         </div>
         <div className="topbar-right no-drag">
+          <span className={`pill backend ${thread.backend}`}>{thread.backend === "claude" ? "Claude" : thread.backend === "codex" ? "Codex" : "Mock"}{thread.model ? ` · ${thread.model}` : ""}</span>
+          {thread.plan && <span className="pill plan">▤ Plan</span>}
           {thread.worktree && <span className="pill" title={thread.worktree.path}>⑂ {thread.worktree.branch}</span>}
           <span className={`pill status ${thread.status}`}>{label(thread.status)}</span>
           <button className={`btn small ${showChanges ? "active" : ""}`} onClick={onToggleChanges}>
@@ -55,14 +59,21 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
 
       <Composer
         busy={busy}
+        backend={thread.backend}
         mode={thread.mode}
+        plan={thread.plan}
         model={thread.model}
-        modes={MODES}
-        models={MODELS}
+        effort={thread.effort}
+        models={models}
+        modelsError={modelsError}
+        onBackend={(backend: BackendId) => onUpdate({ backend })}
         onMode={(mode: Mode) => onUpdate({ mode })}
+        onPlan={(plan: boolean) => onUpdate({ plan })}
         onModel={(model: string) => onUpdate({ model })}
+        onEffort={(effort) => onUpdate({ effort })}
         onSend={onSend}
         onStop={onStop}
+        inputRef={inputRef}
       />
     </section>
   );
@@ -93,7 +104,7 @@ function Item({ item, onAnswer }: { item: ThreadItem; onAnswer: Props["onAnswer"
           ) : (
             <div className="row">
               <button className="btn primary small" onClick={() => onAnswer(item.id, "yes")}>Approve</button>
-              <button className="btn small" onClick={() => onAnswer(item.id, "always")}>Always</button>
+              {item.canAlways !== false && <button className="btn small" onClick={() => onAnswer(item.id, "always")}>Always</button>}
               <button className="btn danger small" onClick={() => onAnswer(item.id, "no")}>Deny</button>
             </div>
           )}

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AppState, ChangesSnapshot, Settings, Thread, ThreadEvent, ThreadItem } from "../shared/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { AppState, BackendId, ChangesSnapshot, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem } from "../shared/types";
 import { bridge } from "./bridge";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadView } from "./components/ThreadView";
@@ -15,6 +15,8 @@ export function App() {
   const [showChanges, setShowChanges] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [models, setModels] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const refresh = useCallback(async () => {
     const s = await bridge.invoke("state:get", undefined);
@@ -57,6 +59,13 @@ export function App() {
   }, [selected, loadChanges]);
 
   const thread = useMemo(() => state?.threads.find((t) => t.id === selected) ?? null, [state, selected]);
+
+  // Model catalogue per backend, fetched lazily from the CLIs (Codex: live `model/list`).
+  useEffect(() => {
+    const b = thread?.backend;
+    if (!b || models[b]) return;
+    void bridge.invoke("models:list", { backend: b }).then((r) => setModels((m) => ({ ...m, [b]: r }))).catch((err) => setModels((m) => ({ ...m, [b]: { models: [], error: (err as Error).message } })));
+  }, [thread?.backend]);
   const project = useMemo(() => (thread ? state?.projects.find((p) => p.id === thread.projectId) ?? null : null), [state, thread]);
 
   const act = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
@@ -84,7 +93,7 @@ export function App() {
   });
   const stop = () => thread && act(() => bridge.invoke("thread:stop", { threadId: thread.id }));
   const answer = (itemId: string, a: "yes" | "no" | "always") => thread && act(() => bridge.invoke("thread:answer", { threadId: thread.id, itemId, answer: a }));
-  const updateThread = (patch: Partial<Pick<Thread, "mode" | "model" | "title">>) => thread && act(async () => {
+  const updateThread = (patch: Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort">>) => thread && act(async () => {
     await bridge.invoke("thread:update", { threadId: thread.id, patch });
     await refresh();
   });
@@ -109,6 +118,38 @@ export function App() {
     await bridge.invoke("settings:update", patch);
     await refresh();
   });
+
+  // Keyboard shortcuts: ⌘N new thread, ⇧⌘N worktree thread, ⌘⏎ send (handled in Composer), ⇧⌘P plan, ⌘. stop, ⌘J changes.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey;
+      if (!meta) return;
+      const pid = thread?.projectId ?? state?.projects[0]?.id;
+      if (e.key.toLowerCase() === "n" && pid) {
+        e.preventDefault();
+        void newThread(pid, e.shiftKey);
+      } else if (e.key.toLowerCase() === "p" && e.shiftKey && thread) {
+        e.preventDefault();
+        void updateThread({ plan: !thread.plan });
+      } else if (e.key === "." && thread) {
+        e.preventDefault();
+        void stop();
+      } else if (e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        setShowChanges((v) => !v);
+      } else if (e.key === "Enter" && thread && document.activeElement !== inputRef.current) {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [thread, state]);
+
+  // Focus the composer whenever the selected thread changes.
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [selected]);
 
   if (!state) return <div className="app loading">Loading…</div>;
 
@@ -137,6 +178,9 @@ export function App() {
             showChanges={showChanges}
             onToggleChanges={() => setShowChanges((v) => !v)}
             changedCount={changes?.files.length ?? 0}
+            models={models[thread.backend]?.models ?? []}
+            modelsError={models[thread.backend]?.error}
+            inputRef={inputRef}
           />
         ) : (
           <EmptyState hasProjects={state.projects.length > 0} onAddProject={addProject} onNewThread={() => state.projects[0] && newThread(state.projects[0].id)} />

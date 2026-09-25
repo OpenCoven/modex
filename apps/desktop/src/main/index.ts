@@ -7,7 +7,7 @@ import { Store } from "./engine/store.js";
 import { ThreadRunner } from "./engine/runner.js";
 import * as gitx from "./engine/git.js";
 import { runDemo } from "./engine/demo.js";
-import type { BridgeCommands, ThreadEvent } from "../shared/types.js";
+import type { BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(1);
@@ -55,7 +55,7 @@ handle("project:remove", ({ projectId }) => {
   store.removeProject(projectId);
   return store.snapshot();
 });
-handle("thread:create", ({ projectId, worktree, mode, model }) => runner.createThread(projectId, { worktree, mode, model }));
+handle("thread:create", ({ projectId, worktree, mode, model, backend }) => runner.createThread(projectId, { worktree, mode, model, backend }));
 handle("thread:items", ({ threadId }) => runner.items(threadId));
 handle("thread:send", async ({ threadId, text }) => {
   try {
@@ -82,7 +82,15 @@ handle("changes:revert", async ({ threadId, path: rel }) => {
   return gitx.status(cwd);
 });
 handle("settings:update", (patch) => store.updateSettings(patch));
-handle("env:has", ({ name }) => Boolean(process.env[name]));
+handle("models:list", ({ backend }) => runner.listModels(backend));
+handle("backends:health", async () => {
+  const out = {} as Record<BackendId, { ok: boolean; detail: string }>;
+  for (const id of ["claude", "codex", "mock"] as BackendId[]) {
+    const r = await runner.listModels(id);
+    out[id] = r.error ? { ok: false, detail: r.error } : { ok: true, detail: `${r.models.length} model${r.models.length === 1 ? "" : "s"}` };
+  }
+  return out;
+});
 handle("shell:openPath", async ({ path: p }) => {
   await shell.openPath(p);
 });
@@ -127,6 +135,9 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin" || screenshotDir) app.quit();
+});
+app.on("before-quit", () => {
+  void runner.dispose();
 });
 
 async function capture(name: string): Promise<string> {

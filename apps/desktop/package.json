@@ -1,6 +1,6 @@
 {
   "name": "@modex/desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Modex desktop — a Codex-App-style GUI: projects, parallel agent threads, worktrees, inline approvals, and a live Changes panel.",
   "license": "MIT",
   "private": true,
@@ -16,7 +16,7 @@
     "dev": "vite",
     "screenshot": "electron . --demo --screenshot"
   },
-  "dependencies": { "@modex/core": "0.2.0" },
+  "dependencies": { "@modex/core": "0.3.0" },
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

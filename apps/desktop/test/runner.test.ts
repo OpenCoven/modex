@@ -3,35 +3,33 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { Store } from "../src/main/engine/store.js";
-import { ThreadRunner, policyForMode } from "../src/main/engine/runner.js";
+import { ThreadRunner } from "../src/main/engine/runner.js";
+import { MockBackend } from "../src/main/engine/backends/mock.js";
+import type { Backend, TurnOptions, TurnResult, TurnSink } from "../src/main/engine/backends/types.js";
 import type { ThreadEvent, ThreadItem } from "../src/shared/types.js";
-import { MockProvider, type Provider } from "@modex/core";
-import { gitRepo, scripted, tmpdir } from "./helpers.js";
+import { MockProvider, type MockStep } from "@modex/core";
+import { gitRepo, tmpdir, writeScript } from "./helpers.js";
 
-function harness() {
+function harness(steps: MockStep[] = []) {
   const home = tmpdir("modex-home-");
   const store = new Store(home);
+  store.updateSettings({ default_backend: "mock", mock_script: writeScript(steps) });
   const events: ThreadEvent[] = [];
-  return { home, store, events, emit: (e: ThreadEvent) => events.push(e) };
+  const backends = { mock: new MockBackend(() => store.settings.mock_script, home, 0) };
+  return { home, store, events, emit: (e: ThreadEvent) => events.push(e), backends };
 }
 
 const PATCH = "*** Begin Patch\n*** Add File: NOTE.md\n+hello from modex\n*** End Patch";
 
-test("policyForMode mirrors Codex modes", () => {
-  assert.deepEqual(policyForMode("chat"), { approval_policy: "untrusted", sandbox_mode: "read-only" });
-  assert.deepEqual(policyForMode("agent"), { approval_policy: "on-request", sandbox_mode: "workspace-write" });
-  assert.deepEqual(policyForMode("full-access"), { approval_policy: "never", sandbox_mode: "danger-full-access" });
-});
-
 test("agent mode: a prompt runs tools, edits the project, emits items, persists, and sets the title", async () => {
-  const h = harness();
-  const repo = gitRepo();
-  const project = h.store.addProject(repo);
-  const runner = new ThreadRunner({ ...h, providerFactory: scripted([
+  const h = harness([
     { content: "Looking.", tool_calls: [{ name: "shell", arguments: { command: "ls" } }] },
     { tool_calls: [{ name: "apply_patch", arguments: { patch: PATCH } }] },
     { content: "Added NOTE.md." },
-  ]) });
+  ]);
+  const repo = gitRepo();
+  const project = h.store.addProject(repo);
+  const runner = new ThreadRunner(h);
   const thread = await runner.createThread(project.id, { mode: "agent" });
   assert.equal(thread.cwd, repo);
   await runner.send(thread.id, "add a note file please");
@@ -52,7 +50,7 @@ test("agent mode: a prompt runs tools, edits the project, emits items, persists,
   assert.equal(tools[1]!.ok, true);
   assert.equal(runner.status(thread.id), "idle");
   assert.equal(h.store.thread(thread.id)?.title, "add a note file please");
-  assert.ok(h.store.thread(thread.id)?.sessionId);
+  assert.ok(h.store.thread(thread.id)?.sessionHandle);
   // statuses went running → idle; items were persisted for restart
   const statuses = h.events.filter((e) => e.type === "status").map((e) => (e as { status: string }).status);
   assert.deepEqual(statuses, ["running", "idle"]);
@@ -60,13 +58,13 @@ test("agent mode: a prompt runs tools, edits the project, emits items, persists,
 });
 
 test("chat mode: edits pause on an approval card; answering resumes the turn", async () => {
-  const h = harness();
-  const repo = gitRepo();
-  const project = h.store.addProject(repo);
-  const runner = new ThreadRunner({ ...h, providerFactory: scripted([
+  const h = harness([
     { tool_calls: [{ name: "apply_patch", arguments: { patch: PATCH } }] },
     { content: "ok" },
-  ]) });
+  ]);
+  const repo = gitRepo();
+  const project = h.store.addProject(repo);
+  const runner = new ThreadRunner(h);
   const thread = await runner.createThread(project.id, { mode: "chat" });
   const done = runner.send(thread.id, "write NOTE.md");
   const approval = await waitFor(() => runner.items(thread.id).find((i) => i.kind === "approval"));
@@ -80,13 +78,13 @@ test("chat mode: edits pause on an approval card; answering resumes the turn", a
 });
 
 test("denying an approval leaves the tree untouched and tells the model", async () => {
-  const h = harness();
-  const repo = gitRepo();
-  const project = h.store.addProject(repo);
-  const runner = new ThreadRunner({ ...h, providerFactory: scripted([
+  const h = harness([
     { tool_calls: [{ name: "apply_patch", arguments: { patch: PATCH } }] },
     { content: "understood" },
-  ]) });
+  ]);
+  const repo = gitRepo();
+  const project = h.store.addProject(repo);
+  const runner = new ThreadRunner(h);
   const thread = await runner.createThread(project.id, { mode: "chat" });
   const done = runner.send(thread.id, "write NOTE.md");
   const approval = await waitFor(() => runner.items(thread.id).find((i) => i.kind === "approval"));
@@ -99,13 +97,13 @@ test("denying an approval leaves the tree untouched and tells the model", async 
 });
 
 test("stop cancels a waiting approval and returns the thread to idle", async () => {
-  const h = harness();
-  const repo = gitRepo();
-  const project = h.store.addProject(repo);
-  const runner = new ThreadRunner({ ...h, providerFactory: scripted([
+  const h = harness([
     { tool_calls: [{ name: "write_file", arguments: { path: "x.txt", content: "x" } }] },
     { content: "unreachable" },
-  ]) });
+  ]);
+  const repo = gitRepo();
+  const project = h.store.addProject(repo);
+  const runner = new ThreadRunner(h);
   const thread = await runner.createThread(project.id, { mode: "chat" });
   const done = runner.send(thread.id, "go");
   await waitFor(() => runner.items(thread.id).find((i) => i.kind === "approval"));
@@ -120,18 +118,24 @@ test("two threads in the same project run concurrently and independently", async
   const h = harness();
   const repo = gitRepo();
   const project = h.store.addProject(repo);
-  // A provider that takes 300ms per completion: serial execution would need ≥1200ms for two threads × two calls.
-  const slow = (): Provider => {
-    const inner = new MockProvider([{ tool_calls: [{ name: "list_dir", arguments: {} }] }, { content: "finished" }]);
-    return { name: "slow", complete: async (m, t) => { await new Promise((r) => setTimeout(r, 300)); return inner.complete(m, t); } };
+  // A backend that takes 300ms per turn: serial execution would need ≥600ms for two threads.
+  const slow: Backend = {
+    id: "mock",
+    listModels: async () => [],
+    dispose: async () => {},
+    async runTurn(_text: string, _o: TurnOptions, sink: TurnSink): Promise<TurnResult> {
+      await new Promise((r) => setTimeout(r, 300));
+      sink.assistant("finished");
+      return { status: "completed" };
+    },
   };
-  const runner = new ThreadRunner({ ...h, providerFactory: slow });
+  const runner = new ThreadRunner({ ...h, backends: { mock: slow } });
   const a = await runner.createThread(project.id, { mode: "full-access" });
   const b = await runner.createThread(project.id, { mode: "full-access" });
   const started = Date.now();
   await Promise.all([runner.send(a.id, "task a"), runner.send(b.id, "task b")]);
   const elapsed = Date.now() - started;
-  assert.ok(elapsed < 1000, `expected parallel execution, took ${elapsed}ms`);
+  assert.ok(elapsed < 550, `expected parallel execution, took ${elapsed}ms`);
   assert.equal(runner.status(a.id), "idle");
   assert.equal(runner.status(b.id), "idle");
   const order = h.events.filter((e) => e.type === "status").map((e) => e.threadId);
@@ -144,13 +148,13 @@ test("two threads in the same project run concurrently and independently", async
 });
 
 test("worktree threads work on an isolated branch; deleting removes the worktree", async () => {
-  const h = harness();
-  const repo = gitRepo();
-  const project = h.store.addProject(repo);
-  const runner = new ThreadRunner({ ...h, providerFactory: scripted([
+  const h = harness([
     { tool_calls: [{ name: "apply_patch", arguments: { patch: PATCH } }] },
     { content: "done" },
-  ]) });
+  ]);
+  const repo = gitRepo();
+  const project = h.store.addProject(repo);
+  const runner = new ThreadRunner(h);
   const thread = await runner.createThread(project.id, { worktree: true, mode: "agent" });
   assert.ok(thread.worktree);
   assert.equal(thread.worktree!.branch, `modex/${thread.id}`);
@@ -164,15 +168,33 @@ test("worktree threads work on an isolated branch; deleting removes the worktree
   assert.equal(new Store(h.home).items(thread.id).length, 0);
 });
 
-test("a provider error becomes an error notice, not a crash", async () => {
+test("a backend failure becomes an error notice, not a crash", async () => {
   const h = harness();
   const project = h.store.addProject(gitRepo());
-  const runner = new ThreadRunner({ ...h, providerFactory: () => { throw new Error("No API key: set OPENAI_API_KEY"); } });
+  const failing: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, runTurn: async () => ({ status: "failed", error: "codex: not logged in" }) };
+  const runner = new ThreadRunner({ ...h, backends: { mock: failing } });
   const thread = await runner.createThread(project.id);
   await runner.send(thread.id, "hi");
   assert.equal(runner.status(thread.id), "error");
   const notice = runner.items(thread.id).find((i) => i.kind === "notice") as { text: string };
-  assert.match(notice.text, /OPENAI_API_KEY/);
+  assert.match(notice.text, /not logged in/);
+});
+
+test("switching backend resets the resume handle and model; plan/effort persist", async () => {
+  const h = harness([{ content: "ok" }]);
+  const project = h.store.addProject(gitRepo());
+  const runner = new ThreadRunner(h);
+  const thread = await runner.createThread(project.id, { mode: "agent" });
+  assert.equal(thread.backend, "mock");
+  await runner.send(thread.id, "hello");
+  assert.ok(h.store.thread(thread.id)?.sessionHandle);
+  runner.updateThread(thread.id, { plan: true, effort: "high" });
+  assert.equal(h.store.thread(thread.id)?.plan, true);
+  const switched = runner.updateThread(thread.id, { backend: "codex" });
+  assert.equal(switched.backend, "codex");
+  assert.equal(switched.sessionHandle, undefined);
+  assert.equal(switched.effort, undefined);
+  assert.equal(switched.plan, true);
 });
 
 async function waitFor<T>(fn: () => T | undefined, ms = 3000): Promise<T> {

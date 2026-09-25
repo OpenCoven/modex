@@ -1,42 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
-import {
-  Agent, MockProvider, OpenAIProvider, Session, defaultConfig, discoverInstructions, renderInstructions, systemPrompt,
-  type ApprovalAnswer as CoreAnswer, type ModexConfig, type Provider, type UI,
-} from "@modex/core";
-import type { ApprovalAnswer, Mode, Settings, Thread, ThreadEvent, ThreadItem, ThreadStatus } from "../../shared/types.js";
+import type { ApprovalAnswer, BackendId, Mode, ModelInfo, Thread, ThreadEvent, ThreadItem, ThreadStatus } from "../../shared/types.js";
 import { Store, newId } from "./store.js";
 import * as gitx from "./git.js";
-
-/** Codex-App-style modes mapped onto the engine's approval + sandbox policies. */
-export function policyForMode(mode: Mode): Pick<ModexConfig, "approval_policy" | "sandbox_mode"> {
-  switch (mode) {
-    case "chat": return { approval_policy: "untrusted", sandbox_mode: "read-only" };
-    case "agent": return { approval_policy: "on-request", sandbox_mode: "workspace-write" };
-    case "full-access": return { approval_policy: "never", sandbox_mode: "danger-full-access" };
-  }
-}
-
-export type ProviderFactory = (settings: Settings, model: string) => Provider;
-
-export function defaultProviderFactory(settings: Settings, _model: string): Provider {
-  if (settings.provider === "mock") {
-    if (!settings.mock_script) throw new Error("Mock provider selected but no mock script is configured (Settings → Mock script).");
-    const mock = MockProvider.fromFile(settings.mock_script);
-    mock.streamDelayMs = 40;
-    return mock;
-  }
-  const key = process.env.MODEX_API_KEY ?? process.env[settings.api_key_env];
-  if (!key && /api\.openai\.com/.test(settings.base_url)) {
-    throw new Error(`No API key: set ${settings.api_key_env} (or MODEX_API_KEY) in the environment Modex was launched from, or point Settings → Base URL at a local server.`);
-  }
-  return new OpenAIProvider(settings.base_url, key);
-}
+import type { Backend, TurnSink } from "./backends/types.js";
+import { ClaudeBackend } from "./backends/claude.js";
+import { CodexBackend } from "./backends/codex.js";
+import { MockBackend } from "./backends/mock.js";
 
 interface Live {
-  agent: Agent | null;
   abort: AbortController | null;
-  pending: Map<string, (a: CoreAnswer) => void>;
+  pending: Map<string, (a: ApprovalAnswer) => void>;
   items: ThreadItem[];
   status: ThreadStatus;
   /** Assistant item currently receiving streamed text, if any. */
@@ -47,25 +21,49 @@ export interface RunnerOptions {
   home: string;
   store: Store;
   emit: (event: ThreadEvent) => void;
-  providerFactory?: ProviderFactory;
+  /** Override backends (tests inject fakes). */
+  backends?: Partial<Record<BackendId, Backend>>;
 }
 
 /**
- * Owns every thread's agent. Threads run independently and concurrently; each turn is
- * a `@modex/core` Agent run whose UI callbacks are turned into ThreadEvents for the renderer.
+ * Owns every thread. Threads run independently and concurrently; each turn is delegated to
+ * the thread's backend (Claude CLI, Codex CLI, or the offline mock engine) whose callbacks are
+ * turned into ThreadEvents for the renderer and persisted as items.
  */
 export class ThreadRunner {
   private readonly live = new Map<string, Live>();
-  private readonly makeProvider: ProviderFactory;
+  private readonly backends: Record<BackendId, Backend>;
 
   constructor(private readonly o: RunnerOptions) {
-    this.makeProvider = o.providerFactory ?? defaultProviderFactory;
+    const s = () => o.store.settings;
+    this.backends = {
+      claude: o.backends?.claude ?? new ClaudeBackend(s().claude_bin),
+      codex: o.backends?.codex ?? new CodexBackend(s().codex_bin),
+      mock: o.backends?.mock ?? new MockBackend(() => s().mock_script, o.home),
+    };
+  }
+
+  backend(id: BackendId): Backend {
+    return this.backends[id];
+  }
+
+  async listModels(id: BackendId): Promise<{ models: ModelInfo[]; error?: string }> {
+    try {
+      return { models: await this.backends[id].listModels() };
+    } catch (err) {
+      return { models: [], error: (err as Error).message };
+    }
+  }
+
+  async dispose(): Promise<void> {
+    for (const t of this.live.keys()) this.stop(t);
+    await Promise.all(Object.values(this.backends).map((b) => b.dispose()));
   }
 
   private slot(threadId: string): Live {
     let l = this.live.get(threadId);
     if (!l) {
-      l = { agent: null, abort: null, pending: new Map(), items: this.o.store.items(threadId), status: "idle", streaming: null };
+      l = { abort: null, pending: new Map(), items: this.o.store.items(threadId), status: "idle", streaming: null };
       this.live.set(threadId, l);
     }
     return l;
@@ -79,10 +77,11 @@ export class ThreadRunner {
     return this.slot(threadId).status;
   }
 
-  async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string } = {}): Promise<Thread> {
+  async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId } = {}): Promise<Thread> {
     const project = this.o.store.project(projectId);
     if (!project) throw new Error(`unknown project ${projectId}`);
     const settings = this.o.store.settings;
+    const backend = opts.backend ?? settings.default_backend;
     const id = newId();
     const now = new Date().toISOString();
     let cwd = project.path;
@@ -95,7 +94,8 @@ export class ThreadRunner {
     }
     const thread: Thread = {
       id, projectId, title: "New thread", createdAt: now, updatedAt: now, cwd, worktree,
-      mode: opts.mode ?? settings.default_mode, model: opts.model ?? settings.default_model, status: "idle",
+      backend, mode: opts.mode ?? settings.default_mode, plan: false,
+      model: opts.model ?? settings.default_model[backend] ?? "", status: "idle",
     };
     this.o.store.addThread(thread);
     return thread;
@@ -112,7 +112,7 @@ export class ThreadRunner {
     this.o.store.deleteThread(threadId);
   }
 
-  /** Runs one user turn. Resolves when the agent is idle again (or errored). */
+  /** Runs one user turn. Resolves when the thread is idle again (or errored). */
   async send(threadId: string, text: string): Promise<void> {
     const thread = this.o.store.thread(threadId);
     if (!thread) throw new Error(`unknown thread ${threadId}`);
@@ -120,61 +120,32 @@ export class ThreadRunner {
     if (l.status === "running" || l.status === "waiting") throw new Error("This thread is still working. Stop it or wait for it to finish.");
     if (!fs.existsSync(thread.cwd)) throw new Error(`working directory is missing: ${thread.cwd}`);
 
-    const settings = this.o.store.settings;
-    const cfg: ModexConfig = { ...defaultConfig({ MODEX_HOME: this.o.home }), ...policyForMode(thread.mode), model: thread.model, home: this.o.home };
-    if (settings.provider === "mock") cfg.provider = { name: "mock", base_url: "", api_key_env: "" };
-    else cfg.provider = { name: "openai", base_url: settings.base_url, api_key_env: settings.api_key_env };
-
     this.addItem(threadId, { id: newId(), kind: "user", text, at: new Date().toISOString() });
     if (thread.title === "New thread") this.updateThread(threadId, { title: text.replace(/\s+/g, " ").trim().slice(0, 60) || "New thread" });
 
-    let provider: Provider;
+    const abort = new AbortController();
+    l.abort = abort;
+    l.streaming = null;
+    const backend = this.backends[thread.backend];
+    const sink = this.sinkFor(threadId, l);
+    this.setStatus(threadId, "running");
     try {
-      provider = this.makeProvider(settings, thread.model);
+      const result = await backend.runTurn(
+        text,
+        { cwd: thread.cwd, mode: thread.mode, plan: thread.plan, model: thread.model, effort: thread.effort, resume: thread.sessionHandle, addDirs: thread.worktree ? [] : [] },
+        sink,
+        abort.signal,
+      );
+      if (result.status === "failed") {
+        this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: result.error ?? "The turn failed.", at: new Date().toISOString() });
+        this.setStatus(threadId, "error");
+      } else {
+        if (result.status === "interrupted") this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: "Stopped.", at: new Date().toISOString() });
+        this.setStatus(threadId, "idle");
+      }
     } catch (err) {
       this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: (err as Error).message, at: new Date().toISOString() });
       this.setStatus(threadId, "error");
-      return;
-    }
-
-    const loaded = thread.sessionId ? Session.load(this.o.home, thread.sessionId) : null;
-    const session = loaded?.session ?? Session.create(this.o.home, thread.cwd, thread.model);
-    if (!thread.sessionId) this.o.store.updateThread(threadId, { sessionId: session.meta.id });
-
-    const abort = new AbortController();
-    l.abort = abort;
-    const ui = this.uiFor(threadId);
-    const agent = new Agent({
-      cfg, provider, ui, cwd: thread.cwd, session, signal: abort.signal,
-      systemPrompt: systemPrompt(cfg, thread.cwd, renderInstructions(discoverInstructions(thread.cwd, this.o.home))).replace("terminal coding agent", "coding agent running inside the Modex desktop app"),
-      history: l.agent?.messages ?? loaded?.messages,
-      onEvent: (e) => {
-        const at = new Date().toISOString();
-        if (e.type === "assistant_delta") {
-          if (!l.streaming) {
-            l.streaming = { id: newId(), text: "" };
-            this.addItem(threadId, { id: l.streaming.id, kind: "assistant", text: "", at });
-          }
-          l.streaming.text += e.text;
-          this.patchItem(threadId, l.streaming.id, { text: l.streaming.text }, { persist: false });
-        } else if (e.type === "assistant") {
-          if (l.streaming) this.patchItem(threadId, l.streaming.id, { text: e.content });
-          else this.addItem(threadId, { id: newId(), kind: "assistant", text: e.content, at });
-          l.streaming = null;
-        }
-        else if (e.type === "tool_start") this.addItem(threadId, { id: e.id, kind: "tool", name: e.name, title: e.title, args: redact(e.args), status: "running", at });
-        else if (e.type === "tool_end") this.patchItem(threadId, e.id, { output: e.output, ok: e.ok, status: "done", durationMs: e.durationMs });
-      },
-    });
-    l.agent = agent;
-    this.setStatus(threadId, "running");
-    try {
-      await agent.run(text);
-      this.setStatus(threadId, "idle");
-    } catch (err) {
-      const message = abort.signal.aborted ? "Stopped." : (err as Error).message;
-      this.addItem(threadId, { id: newId(), kind: "notice", level: abort.signal.aborted ? "info" : "error", text: message, at: new Date().toISOString() });
-      this.setStatus(threadId, abort.signal.aborted ? "idle" : "error");
     } finally {
       l.abort = null;
       l.streaming = null;
@@ -186,12 +157,12 @@ export class ThreadRunner {
   stop(threadId: string): void {
     const l = this.live.get(threadId);
     if (!l) return;
-    l.abort?.abort();
     for (const [itemId, resolve] of l.pending) {
       this.patchItem(threadId, itemId, { answer: "no" });
       resolve("no");
     }
     l.pending.clear();
+    l.abort?.abort();
   }
 
   answer(threadId: string, itemId: string, answer: ApprovalAnswer): void {
@@ -204,31 +175,49 @@ export class ThreadRunner {
     resolve(answer);
   }
 
-  updateThread(threadId: string, patch: Partial<Pick<Thread, "mode" | "model" | "title">>): Thread {
-    const t = this.o.store.updateThread(threadId, patch);
+  updateThread(threadId: string, patch: Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort">>): Thread {
+    const current = this.o.store.thread(threadId);
+    // Switching backend starts a fresh backend conversation; the transcript stays.
+    const extra: Partial<Thread> = current && patch.backend && patch.backend !== current.backend ? { sessionHandle: undefined, model: this.o.store.settings.default_model[patch.backend] ?? "", effort: undefined } : {};
+    const t = this.o.store.updateThread(threadId, { ...extra, ...patch });
     this.o.emit({ threadId, type: "thread", thread: t });
     return t;
   }
 
-  private uiFor(threadId: string): UI {
+  private sinkFor(threadId: string, l: Live): TurnSink {
     const at = () => new Date().toISOString();
     return {
-      info: (m) => this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: m, at: at() }),
-      assistant: () => {},
-      tool: () => {},
-      warn: (m) => this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: m, at: at() }),
-      error: (m) => this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: m, at: at() }),
-      confirm: (question, detail) =>
-        new Promise<CoreAnswer>((resolve) => {
-          const l = this.slot(threadId);
+      delta: (text) => {
+        if (!l.streaming) {
+          l.streaming = { id: newId(), text: "" };
+          this.addItem(threadId, { id: l.streaming.id, kind: "assistant", text: "", at: at() });
+        }
+        l.streaming.text += text;
+        this.patchItem(threadId, l.streaming.id, { text: l.streaming.text }, { persist: false });
+      },
+      assistant: (text) => {
+        if (l.streaming) this.patchItem(threadId, l.streaming.id, { text });
+        else if (text.trim()) this.addItem(threadId, { id: newId(), kind: "assistant", text, at: at() });
+        l.streaming = null;
+      },
+      toolStart: (t) => {
+        l.streaming = null;
+        this.addItem(threadId, { id: t.id, kind: "tool", name: t.name, title: t.title, args: redact(t.args), status: "running", at: at() });
+      },
+      toolUpdate: (id, patch) => this.patchItem(threadId, id, patch),
+      approval: (req) =>
+        new Promise<ApprovalAnswer>((resolve) => {
           if (l.abort?.signal.aborted) return resolve("no");
           const id = newId();
           l.pending.set(id, resolve);
-          this.addItem(threadId, { id, kind: "approval", question, detail, at: at() });
+          this.addItem(threadId, { id, kind: "approval", question: req.question, detail: req.detail, canAlways: req.canAlways, at: at() });
           this.setStatus(threadId, "waiting");
         }),
-      prompt: async () => null,
-      close: () => {},
+      notice: (level, text) => this.addItem(threadId, { id: newId(), kind: "notice", level, text, at: at() }),
+      session: (handle) => {
+        const t = this.o.store.thread(threadId);
+        if (t && t.sessionHandle !== handle) this.o.store.updateThread(threadId, { sessionHandle: handle });
+      },
     };
   }
 

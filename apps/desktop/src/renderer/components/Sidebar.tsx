@@ -41,8 +41,8 @@ export function Sidebar({ state, selected, onSelect, onAddProject, onNewThread, 
                 <span className="project-name">{p.name}</span>
                 {running > 0 && <span className="badge live">{running}</span>}
                 <span className="spacer" />
-                <button className="icon" title="New thread" onClick={() => onNewThread(p.id)}>+</button>
-                <button className="icon" title="New thread in a git worktree" onClick={() => onNewThread(p.id, true)}>⑂</button>
+                <button className="icon" title="New thread (⌘N)" onClick={() => onNewThread(p.id)}>+</button>
+                <button className="icon" title="New thread in a git worktree (⇧⌘N)" onClick={() => onNewThread(p.id, true)}>⑂</button>
                 <button className="icon dim" title="Remove project" onClick={() => onRemoveProject(p.id)}>×</button>
               </header>
               {!isCollapsed && (
@@ -65,7 +65,7 @@ export function Sidebar({ state, selected, onSelect, onAddProject, onNewThread, 
       <footer className="sidebar-foot">
         <button className="btn ghost full" onClick={onOpenSettings}>⚙ Settings</button>
         <div className="foot-meta">
-          {state.settings.provider === "mock" ? "mock provider" : state.settings.base_url.replace(/^https?:\/\//, "")}
+          {state.settings.default_backend === "mock" ? "offline mock engine" : `default: ${state.settings.default_backend === "claude" ? "Claude Code CLI" : "Codex CLI"} · ${state.settings.default_mode}`}
         </div>
       </footer>
     </aside>

@@ -12,13 +12,13 @@ test("applyOverrides parses JSON values and dotted provider keys; invalid enums 
   assert.equal(out.max_turns, 3);
   assert.equal(out.network_access, true);
   assert.equal(out.provider.base_url, "http://localhost:11434/v1");
-  assert.equal(out.provider.name, "openai");
+  assert.equal(out.provider.name, "mock");
   assert.equal(out.approval_policy, "never");
   assert.throws(() => applyOverrides(cfg, ["sandbox_mode=yolo"]), /invalid sandbox_mode/);
   assert.throws(() => applyOverrides(cfg, ["nokey"]), /bad -c override/);
   // unknown keys are ignored, base is not mutated
   assert.equal(mergeConfig(cfg, { future_key: 1 }).model, cfg.model);
-  assert.equal(cfg.model, "gpt-5-codex");
+  assert.equal(cfg.model, "mock");
 });
 
 test("loadConfig layers ~/.modex/config.json and env overrides", () => {

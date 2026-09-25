@@ -12,8 +12,8 @@ export function modexHome(env: NodeJS.ProcessEnv = process.env): string {
 
 export function defaultConfig(env: NodeJS.ProcessEnv = process.env): ModexConfig {
   return {
-    model: "gpt-5-codex",
-    provider: { name: "openai", base_url: "https://api.openai.com/v1", api_key_env: "OPENAI_API_KEY" },
+    model: "mock",
+    provider: { name: "mock", base_url: "", api_key_env: "" },
     approval_policy: "on-request",
     sandbox_mode: "workspace-write",
     network_access: false,
@@ -107,6 +107,3 @@ export function applyOverrides(cfg: ModexConfig, overrides: string[]): ModexConf
   return mergeConfig(cfg, patch);
 }
 
-export function resolveApiKey(cfg: ModexConfig, env: NodeJS.ProcessEnv = process.env): string | undefined {
-  return env.MODEX_API_KEY ?? env[cfg.provider.api_key_env];
-}

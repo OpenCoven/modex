@@ -26,12 +26,12 @@ export async function runDemo(o: DemoOptions): Promise<void> {
   const demoRepo = path.join(o.home, "demo-repo");
   copyRepoForDemo(o.repoPath, demoRepo);
   const script = path.resolve(o.repoPath, "apps", "desktop", "demo", "mock-script.json");
-  o.store.updateSettings({ provider: "mock", mock_script: script, default_mode: "chat" });
+  o.store.updateSettings({ default_backend: "mock", mock_script: script, default_mode: "chat" });
   const project = o.store.addProject(demoRepo);
   // A second, finished thread so the sidebar shows history.
-  const earlier = await o.runner.createThread(project.id, { mode: "agent" });
+  const earlier = await o.runner.createThread(project.id, { mode: "agent", backend: "mock" });
   o.runner.updateThread(earlier.id, { title: "Explain the approval policy module" });
-  const thread = await o.runner.createThread(project.id, { mode: "chat" });
+  const thread = await o.runner.createThread(project.id, { mode: "chat", backend: "mock" });
   const turn = o.runner.send(thread.id, "Add a CONTRIBUTING.md with the three-step workflow (install, test, PR).");
   await waitFor(() => o.runner.status(thread.id) === "waiting" || o.runner.status(thread.id) === "idle" || o.runner.status(thread.id) === "error");
   await settle();

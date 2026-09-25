@@ -10,7 +10,7 @@ export function tmpdir(prefix = "modex-test-"): string {
 }
 
 export function testConfig(home: string, patch: Partial<ModexConfig> = {}): ModexConfig {
-  return { ...defaultConfig({ MODEX_HOME: home }), provider: { name: "mock", base_url: "", api_key_env: "" }, max_turns: 8, shell_timeout_ms: 10_000, ...patch };
+  return { ...defaultConfig({ MODEX_HOME: home }), max_turns: 8, shell_timeout_ms: 10_000, ...patch };
 }
 
 export interface RecordedUI extends UI {
