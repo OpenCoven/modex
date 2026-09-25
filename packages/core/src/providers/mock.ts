@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { ChatMessage, CompletionResult, Provider, ToolSpec } from "../types.js";
+import type { ChatMessage, CompletionOptions, CompletionResult, Provider, ToolSpec } from "../types.js";
 
 export interface MockStep {
   content?: string;
@@ -14,6 +14,8 @@ export class MockProvider implements Provider {
   readonly name = "mock";
   readonly calls: ChatMessage[][] = [];
   private cursor = 0;
+  /** Delay between streamed words when a caller asks for deltas (0 in tests). */
+  streamDelayMs = 0;
   constructor(private readonly steps: MockStep[]) {}
 
   static fromFile(file: string): MockProvider {
@@ -21,10 +23,17 @@ export class MockProvider implements Provider {
     return new MockProvider(Array.isArray(raw) ? raw : raw.steps);
   }
 
-  async complete(messages: ChatMessage[], _tools: ToolSpec[]): Promise<CompletionResult> {
+  async complete(messages: ChatMessage[], _tools: ToolSpec[], opts?: CompletionOptions): Promise<CompletionResult> {
     this.calls.push(messages.map((m) => ({ ...m })));
     const step = this.steps[this.cursor++];
     if (!step) return { content: "(mock script exhausted)", toolCalls: [] };
+    if (opts?.onDelta && step.content) {
+      // Stream word by word with a small delay so the UI shows text arriving.
+      for (const word of step.content.split(/(?<=\s)/)) {
+        opts.onDelta(word);
+        await new Promise((r) => setTimeout(r, this.streamDelayMs));
+      }
+    }
     return {
       content: step.content ?? "",
       toolCalls: (step.tool_calls ?? []).map((c, i) => ({

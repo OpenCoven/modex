@@ -22,7 +22,9 @@ export type ProviderFactory = (settings: Settings, model: string) => Provider;
 export function defaultProviderFactory(settings: Settings, _model: string): Provider {
   if (settings.provider === "mock") {
     if (!settings.mock_script) throw new Error("Mock provider selected but no mock script is configured (Settings → Mock script).");
-    return MockProvider.fromFile(settings.mock_script);
+    const mock = MockProvider.fromFile(settings.mock_script);
+    mock.streamDelayMs = 40;
+    return mock;
   }
   const key = process.env.MODEX_API_KEY ?? process.env[settings.api_key_env];
   if (!key && /api\.openai\.com/.test(settings.base_url)) {
@@ -37,6 +39,8 @@ interface Live {
   pending: Map<string, (a: CoreAnswer) => void>;
   items: ThreadItem[];
   status: ThreadStatus;
+  /** Assistant item currently receiving streamed text, if any. */
+  streaming: { id: string; text: string } | null;
 }
 
 export interface RunnerOptions {
@@ -61,7 +65,7 @@ export class ThreadRunner {
   private slot(threadId: string): Live {
     let l = this.live.get(threadId);
     if (!l) {
-      l = { agent: null, abort: null, pending: new Map(), items: this.o.store.items(threadId), status: "idle" };
+      l = { agent: null, abort: null, pending: new Map(), items: this.o.store.items(threadId), status: "idle", streaming: null };
       this.live.set(threadId, l);
     }
     return l;
@@ -146,7 +150,18 @@ export class ThreadRunner {
       history: l.agent?.messages ?? loaded?.messages,
       onEvent: (e) => {
         const at = new Date().toISOString();
-        if (e.type === "assistant") this.addItem(threadId, { id: newId(), kind: "assistant", text: e.content, at });
+        if (e.type === "assistant_delta") {
+          if (!l.streaming) {
+            l.streaming = { id: newId(), text: "" };
+            this.addItem(threadId, { id: l.streaming.id, kind: "assistant", text: "", at });
+          }
+          l.streaming.text += e.text;
+          this.patchItem(threadId, l.streaming.id, { text: l.streaming.text }, { persist: false });
+        } else if (e.type === "assistant") {
+          if (l.streaming) this.patchItem(threadId, l.streaming.id, { text: e.content });
+          else this.addItem(threadId, { id: newId(), kind: "assistant", text: e.content, at });
+          l.streaming = null;
+        }
         else if (e.type === "tool_start") this.addItem(threadId, { id: e.id, kind: "tool", name: e.name, title: e.title, args: redact(e.args), status: "running", at });
         else if (e.type === "tool_end") this.patchItem(threadId, e.id, { output: e.output, ok: e.ok, status: "done", durationMs: e.durationMs });
       },
@@ -162,6 +177,7 @@ export class ThreadRunner {
       this.setStatus(threadId, abort.signal.aborted ? "idle" : "error");
     } finally {
       l.abort = null;
+      l.streaming = null;
       for (const resolve of l.pending.values()) resolve("no");
       l.pending.clear();
     }
@@ -223,11 +239,12 @@ export class ThreadRunner {
     this.o.emit({ threadId, type: "item", item });
   }
 
-  private patchItem(threadId: string, id: string, patch: Partial<ThreadItem>): void {
+  private patchItem(threadId: string, id: string, patch: Partial<ThreadItem>, opts: { persist?: boolean } = {}): void {
     const l = this.slot(threadId);
     const idx = l.items.findIndex((i) => i.id === id);
     if (idx >= 0) l.items[idx] = { ...l.items[idx], ...patch } as ThreadItem;
-    this.o.store.saveItems(threadId, l.items);
+    // Streaming deltas skip the disk write; the final message persists the full text.
+    if (opts.persist !== false) this.o.store.saveItems(threadId, l.items);
     this.o.emit({ threadId, type: "item_update", id, patch });
   }
 

@@ -20,8 +20,8 @@ modex/
   threads run **in parallel** and independently, each with its own model and mode.
 - **Worktree threads.** `⑂` starts a thread in a fresh `git worktree` on a `modex/<id>`
   branch under `~/.modex/worktrees/`, so agents never step on each other or on your checkout.
-- **Live transcript.** Tool calls render as collapsible items (`$ command`, `read`, `edit …`)
-  with output and timing; assistant replies render as Markdown.
+- **Live transcript.** Assistant replies stream in token by token and render as Markdown;
+  tool calls render as collapsible items (`$ command`, `read`, `edit …`) with output and timing.
 - **Inline approvals.** When the mode requires it, the thread pauses on a card showing the
   exact command or patch. *Approve*, *Deny*, or *Always* (trusts that command prefix for
   the thread). *Stop* cancels a running turn and any pending approvals.
@@ -96,7 +96,7 @@ concurrently, and worktree threads are created and removed.
 
 ## Not (yet) here
 
-Streaming token deltas, cloud tasks, scheduled automations, MCP servers, installers/code signing.
+Cloud tasks, scheduled automations, MCP servers, installers/code signing.
 
 ## License
 

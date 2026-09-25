@@ -1,5 +1,5 @@
 export { Agent, toolTitle, type AgentOptions, type AgentEvent, type TurnResult } from "./agent.js";
-export { OpenAIProvider } from "./providers/openai.js";
+export { OpenAIProvider, readStream } from "./providers/openai.js";
 export { MockProvider, type MockStep } from "./providers/mock.js";
 export { parsePatch, applyHunks, applyPatchToDisk, PatchError, type PatchOp, type Hunk } from "./tools/apply_patch.js";
 export { TOOL_SPECS } from "./tools/index.js";

@@ -10,6 +10,7 @@ import type { UI } from "./ui.js";
 import type { Session } from "./session.js";
 
 export type AgentEvent =
+  | { type: "assistant_delta"; text: string }
   | { type: "assistant"; content: string }
   | { type: "tool_start"; id: string; name: string; args: Record<string, unknown>; title: string }
   | { type: "tool_end"; id: string; name: string; output: string; ok: boolean; durationMs: number }
@@ -62,7 +63,8 @@ export class Agent {
     this.push({ role: "user", content: userInput });
     let toolCalls = 0;
     for (let turn = 1; turn <= this.o.cfg.max_turns; turn++) {
-      const result = await this.o.provider.complete(this.messages, TOOL_SPECS, { model: this.o.cfg.model, signal: this.o.signal });
+      const onDelta = this.o.onEvent ? (text: string) => this.o.onEvent?.({ type: "assistant_delta", text }) : undefined;
+      const result = await this.o.provider.complete(this.messages, TOOL_SPECS, { model: this.o.cfg.model, signal: this.o.signal, onDelta });
       const assistant: ChatMessage = { role: "assistant", content: result.content };
       if (result.toolCalls.length) assistant.tool_calls = result.toolCalls;
       this.push(assistant);

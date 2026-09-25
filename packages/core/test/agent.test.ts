@@ -36,6 +36,9 @@ test("agent loop: tool calls run, results feed back, final answer returned, even
   assert.deepEqual(events.filter((e) => e.type === "tool_start").map((e) => (e as { title: string }).title), ["list .", "read hello.txt", "edit out.md", "$ cat out.md"]);
   assert.ok(events.every((e) => e.type !== "tool_end" || e.ok));
   assert.equal(events.at(-1)?.type, "turn_end");
+  // streamed deltas reassemble into each assistant message
+  const streamed = events.filter((e) => e.type === "assistant_delta").map((e) => (e as { text: string }).text).join("");
+  assert.equal(streamed, "Looking around.Done: created out.md.");
   // persisted transcript (everything but the regenerated system prompt) can be resumed
   const loaded = Session.load(home, session.meta.id);
   assert.ok(loaded);

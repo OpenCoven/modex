@@ -38,6 +38,12 @@ test("agent mode: a prompt runs tools, edits the project, emits items, persists,
   assert.equal(fs.readFileSync(path.join(repo, "NOTE.md"), "utf8"), "hello from modex\n");
   const items = runner.items(thread.id);
   assert.deepEqual(items.map((i) => i.kind), ["user", "assistant", "tool", "tool", "assistant"]);
+  // streaming: the first assistant item was created empty, grew via item_update, and ended with the full text
+  const first = items[1] as { id: string; text: string };
+  assert.equal(first.text, "Looking.");
+  const updates = h.events.filter((e) => e.type === "item_update" && e.id === first.id).map((e) => (e as { patch: { text?: string } }).patch.text);
+  assert.ok(updates.length >= 1 && updates.at(-1) === "Looking.");
+  assert.equal((h.events.find((e) => e.type === "item" && (e as { item: ThreadItem }).item.id === first.id) as { item: { text: string } }).item.text, "");
   const tools = items.filter((i): i is Extract<ThreadItem, { kind: "tool" }> => i.kind === "tool");
   assert.equal(tools[0]!.title, "$ ls");
   assert.equal(tools[0]!.status, "done");

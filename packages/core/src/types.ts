@@ -31,9 +31,16 @@ export interface CompletionResult {
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
 
+export interface CompletionOptions {
+  model: string;
+  signal?: AbortSignal;
+  /** When provided, providers that support streaming call this with each text delta as it arrives. */
+  onDelta?: (text: string) => void;
+}
+
 export interface Provider {
   readonly name: string;
-  complete(messages: ChatMessage[], tools: ToolSpec[], opts: { model: string; signal?: AbortSignal }): Promise<CompletionResult>;
+  complete(messages: ChatMessage[], tools: ToolSpec[], opts: CompletionOptions): Promise<CompletionResult>;
 }
 
 export type ApprovalPolicy = "untrusted" | "on-request" | "never";
