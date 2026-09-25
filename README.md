@@ -94,6 +94,14 @@ launches the packaged app with a seeded `MODEX_HOME` and the offline mock backen
 no CLI login: it asserts the approval card blocks the edit until *Approve* is clicked, that the
 Changes panel shows the resulting diff, and that the thread is restored after a relaunch.
 
+## Branch protection
+
+`main` is meant to accept only signed commits that passed the CI check. The ruleset lives at
+`.github/rulesets/main.json` (import it under *Settings → Rules → Rulesets → Import*, or
+`gh api -X POST repos/OpenCoven/modex/rulesets --input .github/rulesets/main.json`). GitHub
+only enforces rulesets on private repositories for paid org plans; on the Free plan the repo
+must be public for the rules to apply.
+
 ## Not (yet) here
 
 Codex Cloud tasks, scheduled automations, image attachments, installers/code signing. Also: Modex deliberately has no HTTP-API mode — if a CLI is not installed or logged in, the thread says so.
