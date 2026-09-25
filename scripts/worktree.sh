@@ -46,8 +46,17 @@ case "${1:-}" in
     fi
     git -C "$primary" worktree remove "$dest"
     git -C "$primary" fetch -q origin main
-    if git -C "$primary" merge-base --is-ancestor "$name" origin/main 2>/dev/null; then
-      git -C "$primary" branch -q -d "$name" && echo "removed worktree and merged branch $name"
+    # main is squash-merged, so a landed branch is never an ancestor of origin/main. Treat the
+    # branch as merged when it is an ancestor OR its tree is identical to origin/main's (squash
+    # landed and nothing else has since) OR GitHub reports a merged PR for it.
+    merged=no
+    if git -C "$primary" merge-base --is-ancestor "$name" origin/main 2>/dev/null; then merged=yes
+    elif git -C "$primary" diff --quiet "origin/main" "$name" 2>/dev/null; then merged=yes
+    elif command -v gh >/dev/null 2>&1 && [ "$(git -C "$primary" -c core.quotepath=false ls-remote --heads origin "$name" | wc -l | tr -d ' ')" = "0" ] \
+         && [ -n "$(gh pr list --state merged --head "$name" --json number --jq '.[0].number' 2>/dev/null)" ]; then merged=yes
+    fi
+    if [ "$merged" = yes ]; then
+      git -C "$primary" branch -q -D "$name" && echo "removed worktree and merged branch $name"
     else
       echo "removed worktree; branch $name kept (not merged into origin/main)"
     fi
