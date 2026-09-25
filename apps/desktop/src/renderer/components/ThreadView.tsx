@@ -28,7 +28,7 @@ export function shortenHome(p: string): string {
 }
 
 /** Keeps the tail of a long path (the part that distinguishes worktrees), dropping whole leading segments. */
-export function tailPath(p: string, max = 60): string {
+export function tailPath(p: string, max = 40): string {
   if (p.length <= max) return p;
   const parts = p.split("/");
   let out = "";
