@@ -1,6 +1,6 @@
 {
   "steps": [
-    { "content": "I'll take a look at the project first.", "tool_calls": [ { "name": "list_dir", "arguments": { "path": ".", "depth": 1 } }, { "name": "read_file", "arguments": { "path": "package.json", "limit": 12 } } ] },
+    { "thinking": "The user wants a CONTRIBUTING.md with a three-step workflow. I should inspect the repo layout and package scripts first, then add the file with install, test, and PR steps.", "content": "I'll take a look at the project first.", "tool_calls": [ { "name": "list_dir", "arguments": { "path": ".", "depth": 1 } }, { "name": "read_file", "arguments": { "path": "package.json", "limit": 12 } } ] },
     { "tool_calls": [ { "name": "shell", "arguments": { "command": "git status --short | head -5" } } ] },
     { "content": "The repo is clean. I'll add a short contributor note as requested.", "tool_calls": [ { "name": "apply_patch", "arguments": { "patch": "*** Begin Patch\n*** Add File: CONTRIBUTING.md\n+# Contributing to Modex\n+\n+1. Run `npm install` at the repo root.\n+2. `npm test` runs the core and desktop suites.\n+3. Open a PR with a focused diff and a short verification note.\n*** End Patch" } } ] },
     { "content": "Done — I added `CONTRIBUTING.md` with the three-step workflow (install, test, PR). Verified the file exists via the patch summary; nothing else in the tree changed." }

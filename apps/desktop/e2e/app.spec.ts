@@ -81,8 +81,16 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(page.locator(".title-input")).toHaveValue(prompt);
   await expect(page.locator(".composer textarea")).toHaveValue("");
 
-  // The scripted agent streams text, runs tools, then pauses on the apply_patch approval.
+  // The scripted agent thinks first (collapsible), then streams text, runs tools, and pauses on the apply_patch approval.
   await expect(page.locator(".msg.assistant").first()).toContainText("take a look at the project");
+  const thinking = page.locator(".thinking").first();
+  await expect(thinking).toHaveClass(/done/);
+  await expect(thinking.locator(".thinking-label")).toHaveText(/Thought for \d+s/);
+  await expect(thinking.locator(".thinking-body")).toHaveCount(0, { timeout: 1000 });
+  await thinking.locator(".thinking-head").click();
+  await expect(thinking.locator(".thinking-body")).toContainText("inspect the repo layout");
+  await thinking.locator(".thinking-head").click();
+  await expect(thinking.locator(".thinking-body")).toHaveCount(0);
   await expect(page.locator(".tool .tool-title").filter({ hasText: "$ git status" })).toBeVisible();
   const card = page.locator(".approval").first();
   await expect(card).toBeVisible();
@@ -113,6 +121,27 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(page.locator(".changes")).toHaveCount(0);
 
   await page.screenshot({ path: path.join(appDir, "test-results", "e2e-final.png") });
+});
+
+test("the transcript scrolls vertically inside its pane; the page itself never overflows", async () => {
+  // Shrink the window so the finished conversation no longer fits.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1000, 560));
+  const transcript = page.locator(".transcript");
+  await expect.poll(async () => transcript.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(50);
+  await expect(transcript).toHaveCSS("overflow-y", "auto");
+  // The document does not grow past the viewport (body is overflow:hidden; only panes scroll).
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBe(true);
+  // Scrolling the pane moves it; the composer stays pinned at the bottom of the window.
+  await transcript.evaluate((el) => el.scrollTo({ top: 0 }));
+  await transcript.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  await expect.poll(async () => transcript.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  const composer = await page.locator(".composer").boundingBox();
+  const inner = await page.evaluate(() => window.innerHeight);
+  expect(composer!.y + composer!.height).toBeLessThanOrEqual(inner + 1);
+  // Changes panel (⌘J to show it again) keeps its own scroll region too.
+  await page.keyboard.press("Meta+j");
+  await expect(page.locator(".changes .diff")).toHaveCSS("overflow", "auto");
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1380, 880));
 });
 
 test("state survives a relaunch: the thread and its transcript are restored", async () => {

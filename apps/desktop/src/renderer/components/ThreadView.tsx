@@ -112,7 +112,27 @@ function Item({ item, onAnswer }: { item: ThreadItem; onAnswer: Props["onAnswer"
       );
     case "notice":
       return <div className={`notice ${item.level}`}>{item.text}</div>;
+    case "thinking":
+      return <ThinkingItem item={item} />;
   }
+}
+
+/** Collapsible reasoning: open while the model is still thinking, folded to one line once done. */
+function ThinkingItem({ item }: { item: Extract<ThreadItem, { kind: "thinking" }> }) {
+  const [open, setOpen] = useState<boolean | null>(null);
+  const isOpen = open ?? item.status === "running";
+  const secs = item.durationMs != null ? Math.max(1, Math.round(item.durationMs / 1000)) : null;
+  return (
+    <div className={`thinking ${item.status} ${isOpen ? "open" : ""}`}>
+      <button className="thinking-head" onClick={() => setOpen(!isOpen)} aria-expanded={isOpen}>
+        <span className="thinking-icon">{item.status === "running" ? <span className="spinner" /> : "◌"}</span>
+        <span className={`thinking-label ${item.status === "running" ? "shimmer" : ""}`}>{item.status === "running" ? "Thinking…" : secs ? `Thought for ${secs}s` : "Thinking"}</span>
+        <span className="spacer" />
+        <span className="chev">{isOpen ? "▾" : "▸"}</span>
+      </button>
+      {isOpen && (item.text.trim() ? <div className="thinking-body"><Markdown text={item.text} /></div> : <div className="thinking-body dim">…</div>)}
+    </div>
+  );
 }
 
 function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {

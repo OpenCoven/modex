@@ -214,6 +214,25 @@ export class ThreadRunner {
           this.setStatus(threadId, "waiting");
         }),
       notice: (level, text) => this.addItem(threadId, { id: newId(), kind: "notice", level, text, at: at() }),
+      thinkingDelta: (id, delta) => {
+        const existing = l.items.find((i) => i.id === id && i.kind === "thinking") as Extract<ThreadItem, { kind: "thinking" }> | undefined;
+        // Backends announce a reasoning block before any text exists; only show it once there is something to read,
+        // so models that keep their reasoning private do not leave empty "Thought for 1s" rows behind.
+        if (!existing && !delta) return;
+        if (!existing) {
+          l.streaming = null;
+          this.addItem(threadId, { id, kind: "thinking", text: delta, status: "running", at: at() });
+        } else this.patchItem(threadId, id, { text: existing.text + delta }, { persist: false });
+      },
+      thinkingDone: (id, text) => {
+        const existing = l.items.find((i) => i.id === id && i.kind === "thinking") as Extract<ThreadItem, { kind: "thinking" }> | undefined;
+        if (!existing) {
+          // A reasoning block that only produced text at completion (no deltas) still gets an item.
+          if (text?.trim()) this.addItem(threadId, { id, kind: "thinking", text, status: "done", durationMs: 0, at: at() });
+          return;
+        }
+        this.patchItem(threadId, id, { text: text ?? existing.text, status: "done", durationMs: Date.now() - new Date(existing.at).getTime() });
+      },
       session: (handle) => {
         const t = this.o.store.thread(threadId);
         if (t && t.sessionHandle !== handle) this.o.store.updateThread(threadId, { sessionHandle: handle });

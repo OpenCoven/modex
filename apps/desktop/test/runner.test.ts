@@ -23,7 +23,7 @@ const PATCH = "*** Begin Patch\n*** Add File: NOTE.md\n+hello from modex\n*** En
 
 test("agent mode: a prompt runs tools, edits the project, emits items, persists, and sets the title", async () => {
   const h = harness([
-    { content: "Looking.", tool_calls: [{ name: "shell", arguments: { command: "ls" } }] },
+    { thinking: "Check the tree first.", content: "Looking.", tool_calls: [{ name: "shell", arguments: { command: "ls" } }] },
     { tool_calls: [{ name: "apply_patch", arguments: { patch: PATCH } }] },
     { content: "Added NOTE.md." },
   ]);
@@ -35,9 +35,13 @@ test("agent mode: a prompt runs tools, edits the project, emits items, persists,
   await runner.send(thread.id, "add a note file please");
   assert.equal(fs.readFileSync(path.join(repo, "NOTE.md"), "utf8"), "hello from modex\n");
   const items = runner.items(thread.id);
-  assert.deepEqual(items.map((i) => i.kind), ["user", "assistant", "tool", "tool", "assistant"]);
+  assert.deepEqual(items.map((i) => i.kind), ["user", "thinking", "assistant", "tool", "tool", "assistant"]);
+  const think = items[1] as { text: string; status: string; durationMs?: number };
+  assert.equal(think.text, "Check the tree first.");
+  assert.equal(think.status, "done");
+  assert.ok(think.durationMs != null && think.durationMs >= 0);
   // streaming: the first assistant item was created empty, grew via item_update, and ended with the full text
-  const first = items[1] as { id: string; text: string };
+  const first = items[2] as { id: string; text: string };
   assert.equal(first.text, "Looking.");
   const updates = h.events.filter((e) => e.type === "item_update" && e.id === first.id).map((e) => (e as { patch: { text?: string } }).patch.text);
   assert.ok(updates.length >= 1 && updates.at(-1) === "Looking.");
@@ -166,6 +170,21 @@ test("worktree threads work on an isolated branch; deleting removes the worktree
   assert.equal(fs.existsSync(thread.cwd), false);
   assert.equal(h.store.thread(thread.id), undefined);
   assert.equal(new Store(h.home).items(thread.id).length, 0);
+});
+
+test("reasoning blocks with no text never become Thinking items; completion-only text does", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  const quiet: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn(_t, _o, sink) {
+    sink.thinkingDelta("r-empty", ""); sink.thinkingDone("r-empty");
+    sink.thinkingDone("r-late", "Decided to answer directly.");
+    sink.assistant("hi"); return { status: "completed" };
+  } };
+  const runner = new ThreadRunner({ ...h, backends: { mock: quiet } });
+  const thread = await runner.createThread(project.id);
+  await runner.send(thread.id, "hello");
+  const kinds = runner.items(thread.id).map((i) => `${i.kind}${i.kind === "thinking" ? `:${i.text}` : ""}`);
+  assert.deepEqual(kinds, ["user", "thinking:Decided to answer directly.", "assistant"]);
 });
 
 test("a backend failure becomes an error notice, not a crash", async () => {
