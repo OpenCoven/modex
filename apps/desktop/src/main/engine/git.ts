@@ -122,3 +122,40 @@ export async function worktreeRemove(repo: string, dest: string): Promise<void> 
   if (r.code !== 0 && fs.existsSync(dest)) throw new Error(r.stderr.trim() || "git worktree remove failed");
   await git(repo, ["worktree", "prune"]);
 }
+
+/** Path of the project's own worktree tool, if it ships one (the convention in AGENTS.md). */
+export function projectWorktreeScript(repo: string): string | null {
+  const script = path.join(repo, "scripts", "worktree.sh");
+  try {
+    fs.accessSync(script, fs.constants.R_OK);
+    return script;
+  } catch {
+    return null;
+  }
+}
+
+function runScript(repo: string, script: string, args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
+  return new Promise((resolve) => {
+    execFile("bash", [script, ...args], { cwd: repo, maxBuffer: 8 * 1024 * 1024, env: process.env, timeout: 10 * 60 * 1000 }, (err, stdout, stderr) => {
+      const code = err && typeof (err as { code?: unknown }).code === "number" ? (err as { code: number }).code : err ? 1 : 0;
+      resolve({ stdout: String(stdout), stderr: String(stderr), code });
+    });
+  });
+}
+
+/**
+ * Creates a worktree through the project's `scripts/worktree.sh new <name>`, which prints the
+ * worktree path on its last stdout line. The branch is the name by convention.
+ */
+export async function projectWorktreeAdd(repo: string, script: string, name: string): Promise<{ path: string; branch: string; manager: "project-script" }> {
+  const r = await runScript(repo, script, ["new", name]);
+  const dest = r.stdout.trim().split("\n").filter(Boolean).at(-1) ?? "";
+  if (r.code !== 0 || !dest || !fs.existsSync(dest)) throw new Error(`${path.relative(repo, script)} new ${name} failed${r.stderr.trim() ? `: ${r.stderr.trim().split("\n").slice(-2).join(" ")}` : ""}`);
+  return { path: fs.realpathSync(dest), branch: name, manager: "project-script" };
+}
+
+/** Removes a project-script worktree. The script refuses on uncommitted changes; that refusal surfaces as an error. */
+export async function projectWorktreeRemove(repo: string, script: string, name: string): Promise<void> {
+  const r = await runScript(repo, script, ["remove", name]);
+  if (r.code !== 0) throw new Error(r.stderr.trim().split("\n").slice(-2).join(" ") || `${path.relative(repo, script)} remove ${name} failed`);
+}

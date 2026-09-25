@@ -31,7 +31,10 @@ case "${1:-}" in
     else
       git -C "$primary" worktree add -q -b "$name" "$dest" origin/main
     fi
-    ( cd "$dest" && npm install --no-audit --no-fund --loglevel=error >/dev/null 2>&1 ) || echo "note: npm install failed; run it inside the worktree" >&2
+    # A fresh worktree has no built @modex/core, which the desktop tests import; build it so
+    # `npm test` works immediately.
+    ( cd "$dest" && npm install --no-audit --no-fund --loglevel=error >/dev/null 2>&1 && npm run build -w @modex/core >/dev/null 2>&1 ) \
+      || echo "note: npm install/build failed; run \`npm install && npm run build\` inside the worktree" >&2
     echo "$dest"
     ;;
   list)

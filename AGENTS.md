@@ -19,8 +19,10 @@ itself driving one of them.
   `fix-scroll`, `ci-macos`). `.worktrees/` is git-ignored.
 - Two sessions must not share a worktree or a branch. If you find commits you did not make
   on your branch, stop and reconcile before pushing.
-- Modex worktree threads (`⑂`) follow the same idea for the repositories Modex works on;
-  they live under `~/.modex/worktrees/`, not here.
+- Modex's own worktree threads (`⑂`) honour this convention: when a project ships
+  `scripts/worktree.sh`, Modex calls `new modex-<thread id>` / `remove …` on it, so threads on
+  this repo land in `.worktrees/` like any other session. Projects without the script get a
+  plain `git worktree` under `~/.modex/worktrees/`.
 
 ## Landing changes
 
