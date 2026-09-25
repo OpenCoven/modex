@@ -17,9 +17,17 @@ interface Props {
   models: ModelInfo[];
   modelsError?: string;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  onOpenPath: (path: string) => void;
+  onOpenTerminal: (path: string) => void;
+  platform: string;
 }
 
-export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, onUpdate, showChanges, onToggleChanges, changedCount, models, modelsError, inputRef }: Props) {
+/** `/Users/val/x` → `~/x` for display; the full path stays in the tooltip and clipboard. */
+export function shortenHome(p: string): string {
+  return p.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~").replace(/^[A-Za-z]:\\Users\\[^\\]+(?=\\|$)/, "~");
+}
+
+export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, onUpdate, showChanges, onToggleChanges, changedCount, models, modelsError, inputRef, onOpenPath, onOpenTerminal, platform }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
 
@@ -39,13 +47,26 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
         <div className="topbar-right no-drag">
           <span className={`pill backend ${thread.backend}`}>{thread.backend === "claude" ? "Claude" : thread.backend === "codex" ? "Codex" : "Mock"}{thread.model ? ` · ${thread.model}` : ""}</span>
           {thread.plan && <span className="pill plan">▤ Plan</span>}
-          {thread.worktree && <span className="pill" title={thread.worktree.path}>⑂ {thread.worktree.branch}</span>}
           <span className={`pill status ${thread.status}`}>{label(thread.status)}</span>
           <button className={`btn small ${showChanges ? "active" : ""}`} onClick={onToggleChanges}>
             Changes{changedCount ? <span className="count">{changedCount}</span> : null}
           </button>
         </div>
       </header>
+
+      <div className="location" role="group" aria-label="Working directory">
+        <span className="location-kind" title={thread.worktree ? `Worktree managed by ${thread.worktree.manager === "project-script" ? "the project's scripts/worktree.sh" : "Modex"}` : "Runs directly in the project checkout"}>
+          {thread.worktree ? "⑂" : "▸"}
+        </span>
+        {thread.worktree && <code className="location-branch" title="Branch">{thread.worktree.branch}</code>}
+        <code className="location-path" title={thread.cwd}>{shortenHome(thread.cwd)}</code>
+        <span className="spacer" />
+        <button className="btn small ghost" onClick={() => onOpenPath(thread.cwd)} title={`Open ${thread.cwd} in ${platform === "darwin" ? "Finder" : "the file manager"}`}>
+          {platform === "darwin" ? "Finder" : "Files"}
+        </button>
+        <button className="btn small ghost" onClick={() => onOpenTerminal(thread.cwd)} title={`Open a terminal at ${thread.cwd}`}>Terminal</button>
+        <button className="btn small ghost" onClick={() => void navigator.clipboard.writeText(thread.cwd)} title="Copy the full path">Copy path</button>
+      </div>
 
       <div className="transcript" ref={scroller}>
         {items.length === 0 && (

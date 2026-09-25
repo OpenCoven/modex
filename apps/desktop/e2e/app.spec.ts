@@ -63,6 +63,12 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(page.locator(".threads .thread")).toHaveCount(1);
   await expect(page.locator(".composer textarea")).toBeFocused();
   await expect(page.locator(".segmented button.on")).toHaveText("Mock");
+  // The header shows where the thread runs, with open/copy actions; a plain thread runs in the checkout itself.
+  await expect(page.locator(".location .location-path")).toHaveAttribute("title", repo);
+  await expect(page.locator(".location .location-branch")).toHaveCount(0);
+  await expect(page.locator(".location button", { hasText: /Finder|Files/ })).toBeVisible();
+  await expect(page.locator(".location button", { hasText: "Terminal" })).toBeVisible();
+  await expect(page.locator(".location button", { hasText: "Copy path" })).toBeVisible();
   // Model picker is list-only (Codex behaviour): no free-text field, and the CLI's default model is preselected.
   await expect(page.locator(".composer input.model-input")).toHaveCount(0);
   await expect(page.locator(".model-trigger")).toHaveText(/Scripted mock/);
@@ -144,11 +150,28 @@ test("the transcript scrolls vertically inside its pane; the page itself never o
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1380, 880));
 });
 
+test("⇧⌘N creates a worktree thread and the header shows its branch and path", async () => {
+  await page.keyboard.press("Meta+Shift+n");
+  await expect(page.locator(".threads .thread")).toHaveCount(2);
+  const branch = page.locator(".location .location-branch");
+  await expect(branch).toHaveText(/^modex\/\w+$/);
+  const pathTitle = await page.locator(".location .location-path").getAttribute("title");
+  expect(pathTitle).toContain(path.join(home, "worktrees"));
+  expect(fs.existsSync(path.join(pathTitle!, "README.md"))).toBe(true);
+  await expect(page.locator(".location .location-kind")).toHaveText("⑂");
+  await page.locator(".location button", { hasText: "Copy path" }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(pathTitle);
+  // Back to the first thread for the relaunch test.
+  await page.locator(".threads .thread").nth(1).click();
+  await expect(page.locator(".location .location-branch")).toHaveCount(0);
+});
+
 test("state survives a relaunch: the thread and its transcript are restored", async () => {
   await app.close();
   app = await electron.launch({ args: [appDir], cwd: appDir, env: { ...process.env, MODEX_HOME: home } });
   page = await app.firstWindow();
-  await expect(page.locator(".threads .thread")).toHaveCount(1);
+  await expect(page.locator(".threads .thread")).toHaveCount(2);
+  await page.locator(".threads .thread").nth(1).click();
   await expect(page.locator(".approval .approval-answer")).toHaveText("Approved");
   await expect(page.locator(".msg.assistant").last()).toContainText("added CONTRIBUTING.md");
   await expect(page.locator(".pill.plan")).toHaveText(/Plan/);

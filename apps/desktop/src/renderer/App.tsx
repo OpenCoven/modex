@@ -130,6 +130,8 @@ export function App() {
     if (!window.confirm(`Discard changes to ${path}? This cannot be undone.`)) return;
     setChanges(await bridge.invoke("changes:revert", { threadId: thread.id, path }));
   });
+  const openPath = (p: string) => act(() => bridge.invoke("shell:openPath", { path: p }));
+  const openTerminal = (p: string) => act(() => bridge.invoke("shell:openTerminal", { path: p }));
   const saveSettings = (patch: Partial<Settings>) => act(async () => {
     await bridge.invoke("settings:update", patch);
     await refresh();
@@ -197,6 +199,9 @@ export function App() {
             models={models[thread.backend]?.models ?? []}
             modelsError={models[thread.backend]?.error}
             inputRef={inputRef}
+            onOpenPath={openPath}
+            onOpenTerminal={openTerminal}
+            platform={bridge.platform}
           />
         ) : (
           <EmptyState hasProjects={state.projects.length > 0} onAddProject={addProject} onNewThread={() => state.projects[0] && newThread(state.projects[0].id)} />
