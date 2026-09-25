@@ -98,6 +98,12 @@ launches the packaged app with a seeded `MODEX_HOME` and the offline mock backen
 no CLI login: it asserts the approval card blocks the edit until *Approve* is clicked, that the
 Changes panel shows the resulting diff, and that the thread is restored after a relaunch.
 
+## Working on Modex
+
+Every session works in its own worktree: `scripts/worktree.sh new <name>` creates
+`.worktrees/<name>` on a branch of that name from `origin/main`; the primary checkout stays on
+`main`. See `AGENTS.md` (also loaded by Claude Code via `CLAUDE.md`) for the full convention.
+
 ## Branch protection
 
 `main` is meant to accept only signed commits that passed the CI check. The ruleset lives at
