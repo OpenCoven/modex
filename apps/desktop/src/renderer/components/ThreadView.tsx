@@ -54,7 +54,7 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
           </div>
         )}
         {items.map((item) => <Item key={item.id} item={item} onAnswer={onAnswer} />)}
-        {thread.status === "running" && <div className="thinking"><span className="spinner" /> Working…</div>}
+        {thread.status === "running" && <div className="working"><span className="spinner" /> Working…</div>}
       </div>
 
       <Composer
@@ -130,7 +130,7 @@ function ThinkingItem({ item }: { item: Extract<ThreadItem, { kind: "thinking" }
         <span className="spacer" />
         <span className="chev">{isOpen ? "▾" : "▸"}</span>
       </button>
-      {isOpen && (item.text.trim() ? <div className="thinking-body"><Markdown text={item.text} /></div> : <div className="thinking-body dim">…</div>)}
+      {isOpen && (item.text.trim() ? <div className="thinking-body"><Markdown text={item.text} /></div> : <div className="thinking-body dim">{item.status === "running" ? "…" : "The CLI did not share the reasoning text for this step."}</div>)}
     </div>
   );
 }

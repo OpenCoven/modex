@@ -24,7 +24,7 @@ export class CodexBackend implements Backend {
     this.ready = new Promise((resolve, reject) => {
       let child: ChildProcess;
       try {
-        child = this.spawnImpl(this.bin, ["app-server"], { stdio: ["pipe", "pipe", "pipe"], env: process.env });
+        child = this.spawnImpl(this.bin, ["app-server", "-c", 'model_reasoning_summary="detailed"'], { stdio: ["pipe", "pipe", "pipe"], env: process.env });
       } catch (err) {
         return reject(new Error(`could not start ${this.bin} app-server: ${(err as Error).message}`));
       }
@@ -122,10 +122,10 @@ export class CodexBackend implements Backend {
     let threadId = opts.resume;
     try {
       if (threadId && !this.loaded.has(threadId)) {
-        const r = await this.request<{ thread: { id: string } }>("thread/resume", { threadId, cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null });
+        const r = await this.request<{ thread: { id: string } }>("thread/resume", { threadId, cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config: THREAD_CONFIG });
         threadId = r.thread.id;
       } else if (!threadId) {
-        const r = await this.request<{ thread: { id: string } }>("thread/start", { cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null });
+        const r = await this.request<{ thread: { id: string } }>("thread/start", { cwd: opts.cwd, approvalPolicy: pol.approvalPolicy, sandbox: pol.sandbox, model: opts.model || null, config: THREAD_CONFIG });
         threadId = r.thread.id;
       }
     } catch (err) {
@@ -284,6 +284,9 @@ export class CodexBackend implements Backend {
     }
   }
 }
+
+/** Per-thread Codex config overrides: surface reasoning summaries so the Thinking item has something to show. */
+const THREAD_CONFIG = { model_reasoning_summary: "detailed" };
 
 const PLAN_PREFIX = "PLAN MODE: Investigate the codebase read-only and reply with a concrete, numbered implementation plan (files to change, order, risks, how to verify). Do not edit files or run commands that modify anything.";
 

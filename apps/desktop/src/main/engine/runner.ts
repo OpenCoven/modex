@@ -216,9 +216,9 @@ export class ThreadRunner {
       notice: (level, text) => this.addItem(threadId, { id: newId(), kind: "notice", level, text, at: at() }),
       thinkingDelta: (id, delta) => {
         const existing = l.items.find((i) => i.id === id && i.kind === "thinking") as Extract<ThreadItem, { kind: "thinking" }> | undefined;
-        // Backends announce a reasoning block before any text exists; only show it once there is something to read,
-        // so models that keep their reasoning private do not leave empty "Thought for 1s" rows behind.
-        if (!existing && !delta) return;
+        // Backends announce a reasoning block before any text exists. The row appears immediately
+        // ("Thinking…") so the user sees the model reasoning; if the CLI never shares the text the
+        // finished row stays as a compact "Thought for Ns" line and says so when expanded.
         if (!existing) {
           l.streaming = null;
           this.addItem(threadId, { id, kind: "thinking", text: delta, status: "running", at: at() });

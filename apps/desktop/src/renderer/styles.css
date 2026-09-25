@@ -146,7 +146,7 @@ a { color: var(--accent); }
 .notice { margin-bottom: 10px; font-size: 12.5px; color: var(--fg-2); }
 .notice.warn { color: var(--warn); }
 .notice.error { color: var(--danger); }
-.thinking { display: flex; align-items: center; gap: 8px; color: var(--fg-2); margin-top: 6px; }
+.working { display: flex; align-items: center; gap: 8px; color: var(--fg-2); margin-top: 6px; }
 .spinner { width: 12px; height: 12px; border: 2px solid var(--line-2); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
