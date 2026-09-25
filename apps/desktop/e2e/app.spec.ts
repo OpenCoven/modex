@@ -63,6 +63,15 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(page.locator(".threads .thread")).toHaveCount(1);
   await expect(page.locator(".composer textarea")).toBeFocused();
   await expect(page.locator(".segmented button.on")).toHaveText("Mock");
+  // Model picker is list-only (Codex behaviour): no free-text field, and the CLI's default model is preselected.
+  await expect(page.locator(".composer input.model-input")).toHaveCount(0);
+  await expect(page.locator(".model-trigger")).toHaveText(/Scripted mock/);
+  await page.locator(".model-trigger").click();
+  await expect(page.locator(".menu .menu-item")).toHaveCount(1);
+  await expect(page.locator(".menu .menu-item.selected .menu-title")).toContainText("Scripted mock");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".menu")).toHaveCount(0);
+  await page.locator(".composer textarea").focus();
 
   // Type a task and send with ⌘⏎.
   const prompt = "Add a CONTRIBUTING.md with the three-step workflow";

@@ -66,6 +66,22 @@ export function App() {
     if (!b || models[b]) return;
     void bridge.invoke("models:list", { backend: b }).then((r) => setModels((m) => ({ ...m, [b]: r }))).catch((err) => setModels((m) => ({ ...m, [b]: { models: [], error: (err as Error).message } })));
   }, [thread?.backend]);
+
+  // Like the Codex App, a thread always has a concrete model the CLI knows: pick the CLI's
+  // default (or the settings default) when the thread has none or names one the CLI no longer lists.
+  useEffect(() => {
+    if (!thread) return;
+    const list = models[thread.backend]?.models;
+    if (!list?.length) return;
+    const current = list.find((m) => m.id === thread.model);
+    if (current) {
+      if (current.efforts?.length && thread.effort && !current.efforts.includes(thread.effort)) void updateThread({ effort: current.defaultEffort });
+      return;
+    }
+    const preferred = state?.settings.default_model[thread.backend];
+    const pick = list.find((m) => m.id === preferred) ?? list.find((m) => m.isDefault) ?? list[0]!;
+    void updateThread({ model: pick.id, effort: pick.defaultEffort });
+  }, [thread?.id, thread?.backend, thread?.model, models]);
   const project = useMemo(() => (thread ? state?.projects.find((p) => p.id === thread.projectId) ?? null : null), [state, thread]);
 
   const act = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {

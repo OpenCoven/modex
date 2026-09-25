@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: unit + e2e (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests (core + desktop)
+        run: npm test
+
+      # The e2e suite launches the real Electron app under Playwright against the offline
+      # mock backend, so it needs no Claude/Codex login on the runner.
+      - name: E2E (Playwright drives the Electron window)
+        run: npx playwright test
+        working-directory: apps/desktop
+        env:
+          CI: "1"
+
+      - name: Upload e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: apps/desktop/test-results
+          if-no-files-found: ignore
+          retention-days: 7

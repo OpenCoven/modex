@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { BackendId, Mode, Settings } from "../../shared/types";
+import type { BackendId, Mode, ModelInfo, Settings } from "../../shared/types";
 import { BACKENDS, MODES } from "../../shared/types";
 import { bridge } from "../bridge";
 
@@ -12,10 +12,23 @@ interface Props {
 export function SettingsDialog({ settings, onSave, onClose }: Props) {
   const [s, setS] = useState<Settings>(settings);
   const [health, setHealth] = useState<Record<BackendId, { ok: boolean; detail: string }> | null>(null);
+  const [lists, setLists] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
 
   useEffect(() => {
     void bridge.invoke("backends:health", undefined).then(setHealth).catch(() => setHealth(null));
+    for (const b of ["codex", "claude"] as BackendId[]) void bridge.invoke("models:list", { backend: b }).then((r) => setLists((l) => ({ ...l, [b]: r }))).catch((err) => setLists((l) => ({ ...l, [b]: { models: [], error: (err as Error).message } })));
   }, []);
+
+  const modelSelect = (b: "claude" | "codex") => {
+    const r = lists[b];
+    const list = r?.models ?? [];
+    return (
+      <select value={list.some((m) => m.id === s.default_model[b]) ? s.default_model[b] : ""} onChange={(e) => set("default_model", { ...s.default_model, [b]: e.target.value })} disabled={!list.length}>
+        <option value="">{r?.error ? "CLI unavailable" : list.length ? "CLI default" : "Loading…"}</option>
+        {list.map((m) => <option key={m.id} value={m.id}>{m.label}{m.isDefault ? " · default" : ""}</option>)}
+      </select>
+    );
+  };
 
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setS((x) => ({ ...x, [k]: v }));
 
@@ -52,11 +65,11 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
         <div className="grid2">
           <label className="field">
             <span>Default Claude model</span>
-            <input value={s.default_model.claude} onChange={(e) => set("default_model", { ...s.default_model, claude: e.target.value })} placeholder="CLI default (fable, opus, sonnet, haiku…)" spellCheck={false} />
+            {modelSelect("claude")}
           </label>
           <label className="field">
             <span>Default Codex model</span>
-            <input value={s.default_model.codex} onChange={(e) => set("default_model", { ...s.default_model, codex: e.target.value })} placeholder="CLI default (from ~/.codex/config.toml)" spellCheck={false} />
+            {modelSelect("codex")}
           </label>
         </div>
         <label className="field">

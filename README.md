@@ -1,5 +1,7 @@
 # Modex
 
+[![CI](https://github.com/OpenCoven/modex/actions/workflows/ci.yml/badge.svg)](https://github.com/OpenCoven/modex/actions/workflows/ci.yml)
+
 Modex is an open, Codex-App-style desktop app for running coding agents in your local
 repositories. It drives **Claude Code** and **Codex** through their own CLIs (`claude -p`
 stream-json and `codex app-server`), using the logins you already have. It never calls a model
@@ -18,9 +20,10 @@ modex/
 - **Two backends, one UI.** Every thread picks **Codex** or **Claude** in the composer. Codex
   threads talk to `codex app-server` (the same JSON-RPC protocol the official Codex App uses);
   Claude threads talk to `claude -p --output-format stream-json` with permission prompts routed
-  over stdio. Models are listed live from the CLI (`model/list` for Codex — every current
-  GPT model with its reasoning-effort options; the `fable`/`opus`/`sonnet`/`haiku` latest
-  aliases for Claude), and any model id the CLI accepts can be typed.
+  over stdio. The model picker works like the Codex App's: a popover listing exactly the models
+  the CLI reports (`model/list` for Codex — every current GPT model with its reasoning-effort
+  row; the `fable`/`opus`/`sonnet`/`haiku` latest aliases for Claude), default preselected, no
+  free-text entry.
 - **Projects & threads.** Open any local folder as a project. Each project holds threads;
   threads run **in parallel** and independently, each with its own backend, model, and mode.
 - **Worktree threads.** `⑂` starts a thread in a fresh `git worktree` on a `modex/<id>`

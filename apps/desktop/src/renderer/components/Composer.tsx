@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { BackendId, Mode, ModelInfo } from "../../shared/types";
 import { BACKENDS, MODES } from "../../shared/types";
+import { ModelMenu } from "./ModelMenu";
 
 interface Props {
   busy: boolean;
@@ -27,8 +28,6 @@ export function Composer({ busy, backend, mode, plan, model, effort, models, mod
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const ta = inputRef ?? fallbackRef;
   const modeInfo = MODES.find((m) => m.id === mode);
-  const selected = models.find((m) => m.id === model) ?? models.find((m) => m.isDefault);
-  const efforts = selected?.efforts ?? [];
 
   useEffect(() => {
     const el = ta.current;
@@ -77,22 +76,7 @@ export function Composer({ busy, backend, mode, plan, model, effort, models, mod
           <button className={`btn small toggle ${plan ? "on" : ""}`} onClick={() => onPlan(!plan)} disabled={busy} title="Plan mode: investigate read-only and return a plan instead of editing (⇧⌘P)">
             ▤ Plan
           </button>
-          <label className="select" title={modelsError ? `Could not load models: ${modelsError}` : selected?.description ?? "Model"}>
-            <select value={models.some((m) => m.id === model) ? model : model ? "__custom" : ""} onChange={(e) => e.target.value !== "__custom" && onModel(e.target.value)} disabled={busy}>
-              <option value="">{backend === "claude" ? "CLI default model" : backend === "codex" ? "CLI default model" : "mock"}</option>
-              {models.map((m) => <option key={m.id} value={m.id}>{m.label}{m.isDefault ? " · default" : ""}</option>)}
-              {model && !models.some((m) => m.id === model) && <option value="__custom">{model}</option>}
-            </select>
-          </label>
-          <input className="model-input" value={model} onChange={(e) => onModel(e.target.value)} placeholder="model id" title="Type any model id the CLI accepts" spellCheck={false} disabled={busy} />
-          {efforts.length > 0 && (
-            <label className="select" title="Reasoning effort">
-              <select value={effort ?? ""} onChange={(e) => onEffort(e.target.value || undefined)} disabled={busy}>
-                <option value="">effort: default{selected?.defaultEffort ? ` (${selected.defaultEffort})` : ""}</option>
-                {efforts.map((e) => <option key={e} value={e}>effort: {e}</option>)}
-              </select>
-            </label>
-          )}
+          <ModelMenu models={models} model={model} effort={effort} error={modelsError} disabled={busy} onModel={onModel} onEffort={onEffort} />
           <span className="spacer" />
           {busy ? (
             <button className="btn danger" onClick={onStop}>■ Stop</button>
