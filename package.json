@@ -1,0 +1,22 @@
+{
+  "name": "modex-monorepo",
+  "private": true,
+  "version": "0.2.0",
+  "description": "Modex — an open, Codex-App-style desktop coding agent (plus a CLI) built on a shared TypeScript agent engine.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": ["packages/*", "apps/*"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "npm run build -w @modex/core && npm run build -w modex && npm run build -w @modex/desktop",
+    "test": "npm run test -w @modex/core && npm run test -w @modex/desktop",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "desktop": "npm run start -w @modex/desktop",
+    "desktop:dev": "npm run dev -w @modex/desktop",
+    "cli": "node packages/cli/bin/modex.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
