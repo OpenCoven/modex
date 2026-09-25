@@ -27,6 +27,19 @@ export function shortenHome(p: string): string {
   return p.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~").replace(/^[A-Za-z]:\\Users\\[^\\]+(?=\\|$)/, "~");
 }
 
+/** Keeps the tail of a long path (the part that distinguishes worktrees), dropping whole leading segments. */
+export function tailPath(p: string, max = 60): string {
+  if (p.length <= max) return p;
+  const parts = p.split("/");
+  let out = "";
+  for (let i = parts.length - 1; i > 0; i--) {
+    const next = "/" + parts[i] + out;
+    if (next.length + 1 > max) break;
+    out = next;
+  }
+  return "…" + (out || p.slice(-(max - 1)));
+}
+
 export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, onUpdate, showChanges, onToggleChanges, changedCount, models, modelsError, inputRef, onOpenPath, onOpenTerminal, platform }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
@@ -59,7 +72,7 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
           {thread.worktree ? "⑂" : "▸"}
         </span>
         {thread.worktree && <code className="location-branch" title="Branch">{thread.worktree.branch}</code>}
-        <code className="location-path" title={thread.cwd}>{shortenHome(thread.cwd)}</code>
+        <code className="location-path" title={thread.cwd}>{tailPath(shortenHome(thread.cwd))}</code>
         <span className="spacer" />
         <button className="btn small ghost" onClick={() => onOpenPath(thread.cwd)} title={`Open ${thread.cwd} in ${platform === "darwin" ? "Finder" : "the file manager"}`}>
           {platform === "darwin" ? "Finder" : "Files"}

@@ -158,6 +158,11 @@ test("⇧⌘N creates a worktree thread and the header shows its branch and path
   const pathTitle = await page.locator(".location .location-path").getAttribute("title");
   expect(pathTitle).toContain(path.join(home, "worktrees"));
   expect(fs.existsSync(path.join(pathTitle!, "README.md"))).toBe(true);
+  // Long paths are shortened from the left, keeping whole trailing segments and no stray separators.
+  const shown = await page.locator(".location .location-path").innerText();
+  expect(shown.startsWith("…") || shown === pathTitle).toBe(true);
+  expect(pathTitle!.endsWith(shown.replace(/^…/, ""))).toBe(true);
+  expect(shown.endsWith("/")).toBe(false);
   await expect(page.locator(".location .location-kind")).toHaveText("⑂");
   await page.locator(".location button", { hasText: "Copy path" }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(pathTitle);
