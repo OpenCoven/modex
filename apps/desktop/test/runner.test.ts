@@ -172,6 +172,21 @@ test("worktree threads work on an isolated branch; deleting removes the worktree
   assert.equal(new Store(h.home).items(thread.id).length, 0);
 });
 
+test("reasoning blocks with no text never become Thinking items; completion-only text does", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  const quiet: Backend = { id: "mock", listModels: async () => [], dispose: async () => {}, async runTurn(_t, _o, sink) {
+    sink.thinkingDelta("r-empty", ""); sink.thinkingDone("r-empty");
+    sink.thinkingDone("r-late", "Decided to answer directly.");
+    sink.assistant("hi"); return { status: "completed" };
+  } };
+  const runner = new ThreadRunner({ ...h, backends: { mock: quiet } });
+  const thread = await runner.createThread(project.id);
+  await runner.send(thread.id, "hello");
+  const kinds = runner.items(thread.id).map((i) => `${i.kind}${i.kind === "thinking" ? `:${i.text}` : ""}`);
+  assert.deepEqual(kinds, ["user", "thinking:Decided to answer directly.", "assistant"]);
+});
+
 test("a backend failure becomes an error notice, not a crash", async () => {
   const h = harness();
   const project = h.store.addProject(gitRepo());

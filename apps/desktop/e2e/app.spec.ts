@@ -123,6 +123,27 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await page.screenshot({ path: path.join(appDir, "test-results", "e2e-final.png") });
 });
 
+test("the transcript scrolls vertically inside its pane; the page itself never overflows", async () => {
+  // Shrink the window so the finished conversation no longer fits.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1000, 560));
+  const transcript = page.locator(".transcript");
+  await expect.poll(async () => transcript.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(50);
+  await expect(transcript).toHaveCSS("overflow-y", "auto");
+  // The document does not grow past the viewport (body is overflow:hidden; only panes scroll).
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1)).toBe(true);
+  // Scrolling the pane moves it; the composer stays pinned at the bottom of the window.
+  await transcript.evaluate((el) => el.scrollTo({ top: 0 }));
+  await transcript.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  await expect.poll(async () => transcript.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  const composer = await page.locator(".composer").boundingBox();
+  const inner = await page.evaluate(() => window.innerHeight);
+  expect(composer!.y + composer!.height).toBeLessThanOrEqual(inner + 1);
+  // Changes panel (⌘J to show it again) keeps its own scroll region too.
+  await page.keyboard.press("Meta+j");
+  await expect(page.locator(".changes .diff")).toHaveCSS("overflow", "auto");
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1380, 880));
+});
+
 test("state survives a relaunch: the thread and its transcript are restored", async () => {
   await app.close();
   app = await electron.launch({ args: [appDir], cwd: appDir, env: { ...process.env, MODEX_HOME: home } });
