@@ -21,7 +21,8 @@ export interface Thread {
   updatedAt: string;
   /** Directory the agent works in: the project path or a dedicated worktree. */
   cwd: string;
-  worktree?: { path: string; branch: string };
+  /** `manager` records who created it: Modex's own `git worktree` under ~/.modex, or the project's `scripts/worktree.sh`. */
+  worktree?: { path: string; branch: string; manager?: "modex" | "project-script" };
   backend: BackendId;
   mode: Mode;
   /** Plan mode: read-only investigation that ends in a plan instead of edits. */

@@ -187,6 +187,54 @@ test("reasoning with no text still yields a finished Thinking row; completion-on
   assert.deepEqual(kinds, ["user", "thinking:done:", "thinking:done:Decided to answer directly.", "assistant"]);
 });
 
+test("worktree threads use the project's scripts/worktree.sh when it exists; deletion goes through it too", async () => {
+  const h = harness([{ content: "ok" }]);
+  const repo = gitRepo();
+  // A minimal stand-in for the convention script: `new <name>` prints the path, `remove <name>` logs the call.
+  fs.mkdirSync(path.join(repo, "scripts"));
+  fs.writeFileSync(path.join(repo, "scripts", "worktree.sh"), `#!/usr/bin/env bash
+set -e
+root="$(git rev-parse --show-toplevel)"
+case "$1" in
+  new) mkdir -p "$root/.worktrees"; git worktree add -q -b "$2" "$root/.worktrees/$2" HEAD; echo "note: installed deps" >&2; echo "$root/.worktrees/$2";;
+  remove) echo "remove $2" >> "$root/.wt-calls"; git worktree remove "$root/.worktrees/$2"; git branch -q -D "$2";;
+esac
+`);
+  const project = h.store.addProject(repo);
+  const runner = new ThreadRunner(h);
+  const thread = await runner.createThread(project.id, { worktree: true });
+  assert.equal(thread.worktree?.manager, "project-script");
+  assert.equal(thread.worktree?.branch, `modex-${thread.id}`);
+  assert.equal(thread.cwd, fs.realpathSync(path.join(repo, ".worktrees", `modex-${thread.id}`)), "cwd is the path the script printed, not ~/.modex");
+  assert.equal(fs.existsSync(path.join(thread.cwd, "README.md")), true);
+  await runner.send(thread.id, "hello");
+  await runner.deleteThread(thread.id, true);
+  assert.equal(fs.readFileSync(path.join(repo, ".wt-calls"), "utf8").trim(), `remove modex-${thread.id}`);
+  assert.equal(fs.existsSync(thread.cwd), false);
+});
+
+test("worktree threads fall back to ~/.modex/worktrees when the project has no script", async () => {
+  const h = harness([{ content: "ok" }]);
+  const project = h.store.addProject(gitRepo());
+  const runner = new ThreadRunner(h);
+  const thread = await runner.createThread(project.id, { worktree: true });
+  assert.equal(thread.worktree?.manager, "modex");
+  assert.ok(thread.cwd.startsWith(path.join(h.home, "worktrees")));
+  await runner.deleteThread(thread.id, true);
+  assert.equal(fs.existsSync(thread.cwd), false);
+});
+
+test("a failing project script surfaces as an error, not a half-created thread", async () => {
+  const h = harness();
+  const repo = gitRepo();
+  fs.mkdirSync(path.join(repo, "scripts"));
+  fs.writeFileSync(path.join(repo, "scripts", "worktree.sh"), "#!/usr/bin/env bash\necho 'boom: refusing' >&2; exit 3\n");
+  const project = h.store.addProject(repo);
+  const runner = new ThreadRunner(h);
+  await assert.rejects(runner.createThread(project.id, { worktree: true }), /scripts\/worktree.sh new modex-\w+ failed: boom: refusing/);
+  assert.equal(h.store.snapshot().threads.length, 0);
+});
+
 test("a backend failure becomes an error notice, not a crash", async () => {
   const h = harness();
   const project = h.store.addProject(gitRepo());

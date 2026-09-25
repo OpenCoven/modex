@@ -87,10 +87,16 @@ export class ThreadRunner {
     let cwd = project.path;
     let worktree: Thread["worktree"];
     if (opts.worktree) {
-      const branch = `modex/${id}`;
-      const dest = path.join(this.o.home, "worktrees", project.name, id);
-      worktree = await gitx.worktreeAdd(project.path, dest, branch);
-      cwd = dest;
+      const script = gitx.projectWorktreeScript(project.path);
+      if (script) {
+        // The project defines its own convention (e.g. .worktrees/<name>); follow it instead of ~/.modex.
+        worktree = await gitx.projectWorktreeAdd(project.path, script, `modex-${id}`);
+      } else {
+        const branch = `modex/${id}`;
+        const dest = path.join(this.o.home, "worktrees", project.name, id);
+        worktree = { ...(await gitx.worktreeAdd(project.path, dest, branch)), manager: "modex" };
+      }
+      cwd = worktree.path;
     }
     const thread: Thread = {
       id, projectId, title: "New thread", createdAt: now, updatedAt: now, cwd, worktree,
@@ -107,7 +113,11 @@ export class ThreadRunner {
     this.live.delete(threadId);
     if (thread?.worktree && removeWorktree) {
       const project = this.o.store.project(thread.projectId);
-      if (project) await gitx.worktreeRemove(project.path, thread.worktree.path);
+      if (project) {
+        const script = thread.worktree.manager === "project-script" ? gitx.projectWorktreeScript(project.path) : null;
+        if (script) await gitx.projectWorktreeRemove(project.path, script, thread.worktree.branch);
+        else await gitx.worktreeRemove(project.path, thread.worktree.path);
+      }
     }
     this.o.store.deleteThread(threadId);
   }

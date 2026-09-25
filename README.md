@@ -26,8 +26,11 @@ modex/
   free-text entry.
 - **Projects & threads.** Open any local folder as a project. Each project holds threads;
   threads run **in parallel** and independently, each with its own backend, model, and mode.
-- **Worktree threads.** `⑂` starts a thread in a fresh `git worktree` on a `modex/<id>`
-  branch under `~/.modex/worktrees/`, so agents never step on each other or on your checkout.
+- **Worktree threads.** `⑂` starts a thread in a fresh `git worktree` so agents never step on
+  each other or on your checkout. If the project ships `scripts/worktree.sh` (as this repo
+  does), Modex delegates to it — `new modex-<id>` / `remove` — and the thread lives wherever the
+  project's convention says (here: `.worktrees/`). Otherwise it uses a `modex/<id>` branch under
+  `~/.modex/worktrees/`.
 - **Live transcript.** Assistant replies stream in token by token and render as Markdown;
   tool calls render as collapsible items (`$ command`, `read`, `edit …`) with output and timing.
   Model reasoning — Codex reasoning summaries, Claude extended thinking — streams into a
