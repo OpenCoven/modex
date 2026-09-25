@@ -30,6 +30,8 @@ modex/
   branch under `~/.modex/worktrees/`, so agents never step on each other or on your checkout.
 - **Live transcript.** Assistant replies stream in token by token and render as Markdown;
   tool calls render as collapsible items (`$ command`, `read`, `edit …`) with output and timing.
+  Model reasoning — Codex reasoning summaries, Claude extended thinking — streams into a
+  collapsible **Thinking** item that folds to "Thought for Ns" when the model moves on.
 - **Inline approvals.** When the mode requires it, the thread pauses on a card showing the
   exact command or patch. *Approve*, *Deny*, or *Always* (trusts that command prefix for
   the thread). *Stop* cancels a running turn and any pending approvals.

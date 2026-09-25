@@ -63,6 +63,12 @@ test("CodexBackend: a turn streams deltas, command + file-change items, approval
   assert.equal(seen.find((s) => s.method === "thread/start")!.params.cwd, "/repo");
 
   const n = (method: string, params: Record<string, unknown>) => proc.emitLine({ method, params: { threadId, turnId, ...params } });
+  n("item/started", { item: { type: "reasoning", id: "r1", summary: [], content: [] } });
+  n("item/reasoning/summaryTextDelta", { itemId: "r1", delta: "Need to ", summaryIndex: 0 });
+  n("item/reasoning/summaryTextDelta", { itemId: "r1", delta: "look first.", summaryIndex: 0 });
+  n("item/reasoning/summaryPartAdded", { itemId: "r1", summaryIndex: 1 });
+  n("item/reasoning/summaryTextDelta", { itemId: "r1", delta: "Then edit.", summaryIndex: 1 });
+  n("item/completed", { item: { type: "reasoning", id: "r1", summary: ["Need to look first.", "Then edit."], content: [] } });
   n("item/started", { item: { type: "agentMessage", id: "m1", text: "" } });
   n("item/agentMessage/delta", { itemId: "m1", delta: "Look" });
   n("item/agentMessage/delta", { itemId: "m1", delta: "ing." });
@@ -85,6 +91,12 @@ test("CodexBackend: a turn streams deltas, command + file-change items, approval
   assert.equal(r.status, "completed");
   assert.deepEqual(events, [
     `session:${threadId}`,
+    "think:r1:",
+    "think:r1:Need to ",
+    "think:r1:look first.",
+    "think:r1:\n\n",
+    "think:r1:Then edit.",
+    "think_done:r1:Need to look first.\n\nThen edit.",
     "delta:Look",
     "delta:ing.",
     "assistant:Looking.",

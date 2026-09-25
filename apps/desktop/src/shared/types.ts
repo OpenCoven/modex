@@ -39,7 +39,9 @@ export type ThreadItem =
   | { id: string; kind: "assistant"; text: string; at: string }
   | { id: string; kind: "tool"; name: string; title: string; args: Record<string, unknown>; output?: string; ok?: boolean; status: "running" | "done"; durationMs?: number; at: string }
   | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; answer?: ApprovalAnswer; at: string }
-  | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string };
+  | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string }
+  /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. */
+  | { id: string; kind: "thinking"; text: string; status: "running" | "done"; durationMs?: number; at: string };
 
 export type ThreadEvent =
   | { threadId: string; type: "item"; item: ThreadItem }

@@ -36,6 +36,8 @@ export interface CompletionOptions {
   signal?: AbortSignal;
   /** When provided, providers that support streaming call this with each text delta as it arrives. */
   onDelta?: (text: string) => void;
+  /** Reasoning/thinking deltas, for providers that expose them. */
+  onThinking?: (text: string) => void;
 }
 
 export interface Provider {

@@ -81,8 +81,16 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(page.locator(".title-input")).toHaveValue(prompt);
   await expect(page.locator(".composer textarea")).toHaveValue("");
 
-  // The scripted agent streams text, runs tools, then pauses on the apply_patch approval.
+  // The scripted agent thinks first (collapsible), then streams text, runs tools, and pauses on the apply_patch approval.
   await expect(page.locator(".msg.assistant").first()).toContainText("take a look at the project");
+  const thinking = page.locator(".thinking").first();
+  await expect(thinking).toHaveClass(/done/);
+  await expect(thinking.locator(".thinking-label")).toHaveText(/Thought for \d+s/);
+  await expect(thinking.locator(".thinking-body")).toHaveCount(0, { timeout: 1000 });
+  await thinking.locator(".thinking-head").click();
+  await expect(thinking.locator(".thinking-body")).toContainText("inspect the repo layout");
+  await thinking.locator(".thinking-head").click();
+  await expect(thinking.locator(".thinking-body")).toHaveCount(0);
   await expect(page.locator(".tool .tool-title").filter({ hasText: "$ git status" })).toBeVisible();
   const card = page.locator(".approval").first();
   await expect(card).toBeVisible();

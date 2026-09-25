@@ -50,6 +50,9 @@ export class ClaudeBackend implements Backend {
       }
       const lines = new LineBuffer();
       const started = new Map<string, number>();
+      // Extended-thinking blocks are keyed by content-block index within the current assistant message.
+      const thinking = new Map<number, string>();
+      let thinkingSeq = 0;
       let streaming = "";
       let finished = false;
       let stderr = "";
@@ -81,7 +84,7 @@ export class ClaudeBackend implements Backend {
           } catch {
             return;
           }
-          this.handle(msg, sink, { started, write, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } }).then((done) => {
+          this.handle(msg, sink, { started, write, thinking, nextThinkingId: () => `think-${++thinkingSeq}`, get streaming() { return streaming; }, set streaming(v: string) { streaming = v; } }).then((done) => {
             if (done) {
               child.stdin?.end();
               finish(done);
@@ -100,22 +103,38 @@ export class ClaudeBackend implements Backend {
     });
   }
 
-  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { started: Map<string, number>; write: (o: unknown) => void; streaming: string }): Promise<TurnResult | null> {
+  private async handle(msg: ClaudeMessage, sink: TurnSink, ctx: { started: Map<string, number>; write: (o: unknown) => void; streaming: string; thinking: Map<number, string>; nextThinkingId: () => string }): Promise<TurnResult | null> {
     switch (msg.type) {
       case "system":
         if (msg.subtype === "init" && msg.session_id) sink.session(msg.session_id);
         return null;
       case "stream_event": {
         const ev = msg.event;
-        if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
+        if (ev?.type === "message_start") ctx.thinking.clear();
+        else if (ev?.type === "content_block_start" && ev.content_block?.type === "thinking" && ev.index !== undefined) {
+          const id = ctx.nextThinkingId();
+          ctx.thinking.set(ev.index, id);
+          sink.thinkingDelta(id, ev.content_block.thinking ?? "");
+        } else if (ev?.type === "content_block_delta" && ev.delta?.type === "thinking_delta" && ev.index !== undefined) {
+          const id = ctx.thinking.get(ev.index);
+          if (id && ev.delta.thinking) sink.thinkingDelta(id, ev.delta.thinking);
+        } else if (ev?.type === "content_block_stop" && ev.index !== undefined && ctx.thinking.has(ev.index)) {
+          // Keep the index mapped so the full `assistant` message does not re-emit this block.
+          sink.thinkingDone(ctx.thinking.get(ev.index)!);
+        } else if (ev?.type === "content_block_delta" && ev.delta?.type === "text_delta" && ev.delta.text) {
           ctx.streaming += ev.delta.text;
           sink.delta(ev.delta.text);
         }
         return null;
       }
       case "assistant": {
-        for (const block of msg.message?.content ?? []) {
-          if (block.type === "text" && block.text) {
+        for (const [i, block] of (msg.message?.content ?? []).entries()) {
+          if (block.type === "thinking" && block.thinking && !ctx.thinking.has(i)) {
+            // Without partial messages the whole block arrives at once.
+            const id = ctx.nextThinkingId();
+            sink.thinkingDelta(id, block.thinking);
+            sink.thinkingDone(id, block.thinking);
+          } else if (block.type === "text" && block.text) {
             sink.assistant(block.text);
             ctx.streaming = "";
           } else if (block.type === "tool_use" && block.id) {
@@ -173,6 +192,7 @@ export class ClaudeBackend implements Backend {
 interface ContentBlock {
   type: string;
   text?: string;
+  thinking?: string;
   id?: string;
   name?: string;
   input?: Record<string, unknown>;
@@ -185,7 +205,7 @@ interface ClaudeMessage {
   subtype?: string;
   session_id?: string;
   message?: { content?: ContentBlock[] };
-  event?: { type: string; delta?: { type: string; text?: string } };
+  event?: { type: string; index?: number; content_block?: { type: string; thinking?: string }; delta?: { type: string; text?: string; thinking?: string } };
   request_id?: string;
   request?: { subtype?: string; tool_name?: string; input?: Record<string, unknown>; permission_suggestions?: unknown[] };
   is_error?: boolean;

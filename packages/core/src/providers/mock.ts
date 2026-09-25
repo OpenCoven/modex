@@ -2,6 +2,8 @@ import fs from "node:fs";
 import type { ChatMessage, CompletionOptions, CompletionResult, Provider, ToolSpec } from "../types.js";
 
 export interface MockStep {
+  /** Reasoning text streamed before the reply (rendered as a Thinking item). */
+  thinking?: string;
   content?: string;
   tool_calls?: { name: string; arguments: Record<string, unknown> | string }[];
 }
@@ -27,6 +29,12 @@ export class MockProvider implements Provider {
     this.calls.push(messages.map((m) => ({ ...m })));
     const step = this.steps[this.cursor++];
     if (!step) return { content: "(mock script exhausted)", toolCalls: [] };
+    if (opts?.onThinking && step.thinking) {
+      for (const word of step.thinking.split(/(?<=\s)/)) {
+        opts.onThinking(word);
+        await new Promise((r) => setTimeout(r, this.streamDelayMs));
+      }
+    }
     if (opts?.onDelta && step.content) {
       // Stream word by word with a small delay so the UI shows text arriving.
       for (const word of step.content.split(/(?<=\s)/)) {

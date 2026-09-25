@@ -37,11 +37,19 @@ export class MockBackend implements Backend {
       prompt: async () => null,
       close: () => {},
     };
+    let thinkingId: string | null = null;
+    let thinkingSeq = 0;
     const agent = new Agent({
       cfg, provider, ui, cwd: opts.cwd, signal, history: this.histories.get(handle),
       systemPrompt: systemPrompt(cfg, opts.cwd, ""),
       onEvent: (e) => {
-        if (e.type === "assistant_delta") sink.delta(e.text);
+        if (e.type === "thinking_delta") {
+          thinkingId ??= `think-${handle}-${++thinkingSeq}`;
+          sink.thinkingDelta(thinkingId, e.text);
+        } else if (e.type === "thinking_done") {
+          if (thinkingId) sink.thinkingDone(thinkingId);
+          thinkingId = null;
+        } else if (e.type === "assistant_delta") sink.delta(e.text);
         else if (e.type === "assistant") sink.assistant(e.content);
         else if (e.type === "tool_start") sink.toolStart({ id: e.id, name: e.name, title: e.title, args: e.args });
         else if (e.type === "tool_end") sink.toolUpdate(e.id, { output: e.output, ok: e.ok, status: "done", durationMs: e.durationMs });

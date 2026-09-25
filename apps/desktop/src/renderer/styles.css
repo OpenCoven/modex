@@ -235,3 +235,16 @@ kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1px sol
 .effort-pill { font-size: 11.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--fg-1); cursor: pointer; }
 .effort-pill:hover { border-color: var(--accent); }
 .effort-pill.on { background: rgba(124, 156, 255, .15); border-color: var(--accent); color: var(--accent); }
+
+/* Thinking (reasoning) items */
+.thinking { margin: 0 auto 8px; }
+.thinking-head { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 4px 10px; cursor: pointer; text-align: left; color: var(--fg-2); }
+.thinking-head:hover { background: var(--bg-1); border-color: var(--line); }
+.thinking.open .thinking-head { color: var(--fg-1); }
+.thinking-icon { width: 18px; display: inline-flex; justify-content: center; color: var(--fg-2); }
+.thinking-label { font-size: 12.5px; }
+.thinking-label.shimmer { background: linear-gradient(90deg, var(--fg-2) 0%, var(--fg) 50%, var(--fg-2) 100%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 1.6s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.thinking-body { margin: 2px 0 6px 28px; padding-left: 12px; border-left: 2px solid var(--line-2); color: var(--fg-2); font-size: 12.5px; font-style: italic; }
+.thinking-body .md p { margin: 0 0 6px; }
+.thinking-body.dim { color: var(--fg-2); }

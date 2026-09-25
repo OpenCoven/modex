@@ -59,6 +59,8 @@ export function collectSink(answers: ("yes" | "no" | "always")[] = ["yes"]) {
     toolUpdate: (id: string, p: { output?: string; ok?: boolean; status?: string }) => events.push(`tool_update:${id}:${p.status ?? ""}:${p.ok ?? ""}:${(p.output ?? "").slice(0, 40)}`),
     approval: async (req: { question: string }) => { events.push(`approval:${req.question}`); return queue.shift() ?? "no"; },
     notice: (level: string, text: string) => events.push(`notice:${level}:${text}`),
+    thinkingDelta: (id: string, delta: string) => events.push(`think:${id}:${delta}`),
+    thinkingDone: (id: string, text?: string) => events.push(`think_done:${id}:${text ?? ""}`),
     session: (h: string) => events.push(`session:${h}`),
   };
   return { sink, events };

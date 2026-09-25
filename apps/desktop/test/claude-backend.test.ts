@@ -29,9 +29,15 @@ test("ClaudeBackend: streams deltas, tools, answers a permission request, resume
   assert.equal(calls[0]!.cwd, "/repo");
 
   proc.emitLine({ type: "system", subtype: "init", session_id: "sess-1" });
-  proc.emitLine({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "Sure, " } } });
+  proc.emitLine({ type: "stream_event", event: { type: "message_start", message: {} } });
+  proc.emitLine({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } } });
+  proc.emitLine({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Plan: " } } });
+  proc.emitLine({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "write it." } } });
+  proc.emitLine({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "abc" } } });
+  proc.emitLine({ type: "stream_event", event: { type: "content_block_stop", index: 0 } });
+  proc.emitLine({ type: "stream_event", event: { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "Sure, " } } });
   proc.emitLine({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "writing." } } });
-  proc.emitLine({ type: "assistant", message: { content: [{ type: "text", text: "Sure, writing." }, { type: "tool_use", id: "tu1", name: "Write", input: { file_path: "/repo/probe.txt", content: "hi" } }] } });
+  proc.emitLine({ type: "assistant", message: { content: [{ type: "thinking", thinking: "Plan: write it." }, { type: "text", text: "Sure, writing." }, { type: "tool_use", id: "tu1", name: "Write", input: { file_path: "/repo/probe.txt", content: "hi" } }] } });
   proc.emitLine({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "Write", input: { file_path: "/repo/probe.txt", content: "hi" }, permission_suggestions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }] } });
   const resp = JSON.parse(await proc.waitFor((l) => l.includes("control_response"))) as { response: { request_id: string; response: { behavior: string; updatedPermissions?: unknown[] } } };
   assert.equal(resp.response.request_id, "r1");
@@ -46,6 +52,10 @@ test("ClaudeBackend: streams deltas, tools, answers a permission request, resume
   assert.equal(r.status, "completed");
   assert.deepEqual(events, [
     "session:sess-1",
+    "think:think-1:",
+    "think:think-1:Plan: ",
+    "think:think-1:write it.",
+    "think_done:think-1:",
     "delta:Sure, ",
     "delta:writing.",
     "assistant:Sure, writing.",

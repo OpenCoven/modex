@@ -214,6 +214,18 @@ export class ThreadRunner {
           this.setStatus(threadId, "waiting");
         }),
       notice: (level, text) => this.addItem(threadId, { id: newId(), kind: "notice", level, text, at: at() }),
+      thinkingDelta: (id, delta) => {
+        const existing = l.items.find((i) => i.id === id && i.kind === "thinking") as Extract<ThreadItem, { kind: "thinking" }> | undefined;
+        if (!existing) {
+          l.streaming = null;
+          this.addItem(threadId, { id, kind: "thinking", text: delta, status: "running", at: at() });
+        } else this.patchItem(threadId, id, { text: existing.text + delta }, { persist: false });
+      },
+      thinkingDone: (id, text) => {
+        const existing = l.items.find((i) => i.id === id && i.kind === "thinking") as Extract<ThreadItem, { kind: "thinking" }> | undefined;
+        if (!existing) return;
+        this.patchItem(threadId, id, { text: text ?? existing.text, status: "done", durationMs: Date.now() - new Date(existing.at).getTime() });
+      },
       session: (handle) => {
         const t = this.o.store.thread(threadId);
         if (t && t.sessionHandle !== handle) this.o.store.updateThread(threadId, { sessionHandle: handle });

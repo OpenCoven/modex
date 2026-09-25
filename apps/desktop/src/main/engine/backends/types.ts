@@ -31,6 +31,10 @@ export interface TurnSink {
   toolUpdate(id: string, patch: ToolUpdate): void;
   approval(req: ApprovalRequest): Promise<ApprovalAnswer>;
   notice(level: "info" | "warn" | "error", text: string): void;
+  /** Reasoning text as it streams; the first delta for an id opens a Thinking item. */
+  thinkingDelta(id: string, delta: string): void;
+  /** Closes a Thinking item, optionally replacing its text with the final version. */
+  thinkingDone(id: string, text?: string): void;
   /** Called once the backend has a resumable handle (Claude session id, Codex thread id). */
   session(handle: string): void;
 }

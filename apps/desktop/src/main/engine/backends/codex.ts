@@ -139,6 +139,7 @@ export class CodexBackend implements Backend {
       ? `${PLAN_PREFIX}\n\n${text}`
       : text;
     const tools = new Map<string, { started: number; output: string }>();
+    const reasoning = new Set<string>();
     let turnId: string | null = null;
     const streaming = new Map<string, string>();
 
@@ -169,6 +170,9 @@ export class CodexBackend implements Backend {
             const item = p.item as CodexItem;
             if (item.type === "agentMessage") {
               streaming.set(item.id, "");
+            } else if (item.type === "reasoning") {
+              reasoning.add(item.id);
+              sink.thinkingDelta(item.id, "");
             } else if (item.type === "commandExecution") {
               tools.set(item.id, { started: Date.now(), output: "" });
               sink.toolStart({ id: item.id, name: "shell", title: `$ ${stripShell(item.command ?? "")}`, args: { command: item.command, cwd: item.cwd } });
@@ -181,6 +185,16 @@ export class CodexBackend implements Backend {
               const label = item.type === "webSearch" ? `search ${item.query ?? ""}` : `${item.server ? item.server + "." : ""}${item.tool ?? item.type}`;
               sink.toolStart({ id: item.id, name: item.type, title: label, args: (item.arguments as Record<string, unknown>) ?? {} });
             }
+            break;
+          }
+          case "item/reasoning/summaryTextDelta":
+          case "item/reasoning/textDelta": {
+            reasoning.add(String(p.itemId));
+            sink.thinkingDelta(String(p.itemId), String(p.delta ?? ""));
+            break;
+          }
+          case "item/reasoning/summaryPartAdded": {
+            if (Number(p.summaryIndex) > 0) sink.thinkingDelta(String(p.itemId), "\n\n");
             break;
           }
           case "item/agentMessage/delta": {
@@ -209,7 +223,9 @@ export class CodexBackend implements Backend {
               const ok = item.type === "commandExecution" ? item.exitCode === 0 && item.status !== "declined" : item.status ? item.status === "completed" : !item.error;
               sink.toolUpdate(item.id, { output: output || undefined, ok, status: "done", durationMs: item.durationMs ?? Date.now() - t.started });
             } else if (item.type === "reasoning") {
-              /* reasoning summaries are not shown */
+              const text = [...(item.summary ?? []), ...(item.content ?? [])].filter(Boolean).join("\n\n");
+              if (reasoning.has(item.id) || text) sink.thinkingDone(item.id, text || undefined);
+              reasoning.delete(item.id);
             }
             break;
           }
@@ -304,6 +320,8 @@ interface CodexItem {
   exitCode?: number | null;
   durationMs?: number | null;
   changes?: { path: string; kind?: { type: string }; diff: string }[];
+  summary?: string[];
+  content?: string[];
   server?: string;
   tool?: string;
   arguments?: unknown;
