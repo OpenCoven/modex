@@ -2,17 +2,23 @@
   "name": "modex-monorepo",
   "private": true,
   "version": "0.3.0",
-  "description": "Modex — an open, Codex-App-style desktop app that runs Claude Code and Codex through their CLIs.",
+  "description": "Modex \u2014 an open, Codex-App-style desktop app that runs Claude Code and Codex through their CLIs.",
   "license": "MIT",
   "type": "module",
-  "workspaces": ["packages/*", "apps/*"],
-  "engines": { "node": ">=20" },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "npm run build -w @modex/core && npm run build -w @modex/desktop",
     "test": "npm run test -w @modex/core && npm run test -w @modex/desktop",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "desktop": "npm run start -w @modex/desktop",
-    "desktop:dev": "npm run dev -w @modex/desktop"
+    "desktop:dev": "npm run dev -w @modex/desktop",
+    "test:e2e": "npm run test:e2e -w @modex/desktop"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

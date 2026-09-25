@@ -79,13 +79,17 @@ sandbox-mode matrix, a macOS Seatbelt profile, and JSONL sessions.
 
 ```sh
 npm test         # core (patch engine, policy, agent loop) + desktop (backends, runner, git, store)
+npm run test:e2e # Playwright drives the real Electron window: ⌘N, type, ⌘⏎, Approve, ⇧⌘P, ⌘J, relaunch
 ```
 
 The desktop suite drives both CLI backends against scripted fake processes (Claude
 `control_request`/`control_response`, Codex JSON-RPC requests, notifications, and approval
 server-requests) and the runner end to end with the offline engine: approvals pause and resume
 a turn, denial leaves the tree untouched, `Stop` interrupts, two threads run concurrently, and
-worktree threads are created and removed.
+worktree threads are created and removed. The e2e suite (`apps/desktop/e2e/app.spec.ts`)
+launches the packaged app with a seeded `MODEX_HOME` and the offline mock backend, so it needs
+no CLI login: it asserts the approval card blocks the edit until *Approve* is clicked, that the
+Changes panel shows the resulting diff, and that the thread is restored after a relaunch.
 
 ## Not (yet) here
 
