@@ -54,7 +54,7 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
           </div>
         )}
         {items.map((item) => <Item key={item.id} item={item} onAnswer={onAnswer} />)}
-        {thread.status === "running" && <div className="thinking"><span className="spinner" /> Working…</div>}
+        {thread.status === "running" && <div className="working"><span className="spinner" /> Working…</div>}
       </div>
 
       <Composer
