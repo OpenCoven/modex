@@ -73,7 +73,13 @@ export async function createThread(page: Page, prompt: string, opts: { worktree?
   await expect(tid(page, "thread-view")).toBeVisible({ timeout: 15_000 });
   await expect(tid(page, "draft-view")).toHaveCount(0);
   await expect(items(page, "user").first()).toHaveText(prompt);
-  await page.keyboard.press("Meta+.");
-  await expect(tid(page, "thread-status")).toHaveAttribute("data-status", "idle");
+  // Stop only once the turn is really under way (a ⌘. that lands before the run starts is a no-op and
+  // the script carries on to its approval), and press again if a stop raced the next step.
+  const status = tid(page, "thread-status");
+  await expect(status).toHaveAttribute("data-status", /running|waiting/);
+  await expect(async () => {
+    if ((await status.getAttribute("data-status")) !== "idle") await page.keyboard.press("Meta+.");
+    await expect(status).toHaveAttribute("data-status", "idle", { timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
   return (await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-thread-id"))!;
 }

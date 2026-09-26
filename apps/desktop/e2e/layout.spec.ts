@@ -30,6 +30,13 @@ async function capture(state: string): Promise<void> {
 }
 
 const box = async (l: Locator) => (await l.boundingBox())!;
+/** Geometry checks set the pane layout they measure instead of inheriting it from the capture sequence. */
+async function changesHidden(): Promise<void> {
+  if (await tid(page, "changes-panel").count()) await page.keyboard.press("Meta+j");
+  await expect(tid(page, "changes-panel")).toHaveCount(0);
+  // Let the grid settle: the composer is centred in the full-width main pane.
+  await expect.poll(async () => { const m = (await box(tid(page, "main"))); const c = (await box(tid(page, "composer-box"))); return Math.round(Math.abs(c.x + c.width / 2 - (m.x + 1 + (m.width - 1) / 2))); }).toBeLessThanOrEqual(1);
+}
 const css = (l: Locator, prop: string) => l.evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
 
 test.describe.configure({ mode: "serial" });
@@ -178,6 +185,7 @@ test.describe("Phase 4 · composer", () => {
   const near = (got: number, want: number, tol = 1) => expect(Math.abs(got - want), `${got} vs ${want}`).toBeLessThanOrEqual(tol);
 
   test("box is 736×98, centred in the main pane, 16 px off the bottom", async () => {
+    await changesHidden();
     const c = await box(tid(page, "composer-box"));
     near(c.x, 668); near(c.y, 931); near(c.width, 736); near(c.height, 98);
     const m = await box(tid(page, "main"));
@@ -216,6 +224,7 @@ test.describe("Phase 6 · transcript", () => {
   // Reference #8: column = composer box − 22 px; 14 px / 1.6 prose; muted "Working for" over a #1f1f21 rule;
   // #1a1a1c bubble with 12 px corners, right-aligned; "Thinking" at #616163.
   test("column, bubble, turn header and prose match the reference", async () => {
+    await changesHidden();
     const c = await box(tid(page, "composer-box"));
     const header = await box(tid(page, "turn-label").first());
     expect(Math.abs(header.x - (c.x + 11))).toBeLessThanOrEqual(1);
