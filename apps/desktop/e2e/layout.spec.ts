@@ -52,7 +52,10 @@ test.afterAll(async () => {
 test("captures every named chat state at the reference size", async () => {
   // A small screen clamps the window; record what we got rather than failing on the runner's display.
   const vp = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
-  test.info().annotations.push({ type: "viewport", description: `${vp.width}×${vp.height} (reference ${REFERENCE.width}×${REFERENCE.height})` });
+  const note = `${vp.width}×${vp.height} (reference ${REFERENCE.width}×${REFERENCE.height})${vp.width === REFERENCE.width && vp.height === REFERENCE.height ? "" : " — CLAMPED by this display"}`;
+  test.info().annotations.push({ type: "viewport", description: note });
+  // The list reporter drops annotations; print it so CI logs show the size the captures were taken at.
+  console.log(`[ui:capture] viewport ${note}`);
 
   await expect(tid(page, "empty-state")).toBeVisible();
   await capture("01-empty");
