@@ -120,10 +120,56 @@ test.describe("Phase 2 · tokens", () => {
 });
 
 test.describe("Phase 3 · shell", () => {
-  test.fixme("rail 48px, sidebar 240px, 1px pane divider", async () => {
+  // Reference screenshot #1 (1×). ±1 px where anti-aliasing blurs an edge.
+  const near = (got: number, want: number, tol = 1) => expect(Math.abs(got - want), `${got} vs ${want}`).toBeLessThanOrEqual(tol);
+
+  test("titlebar 42px, rail 48px, sheet with a 1px edge and 12px corners", async () => {
+    const bar = await box(tid(page, "titlebar"));
+    expect([bar.x, bar.y, bar.height]).toEqual([0, 0, 42]);
+    expect(await css(tid(page, "titlebar"), "background-color")).toBe("rgb(27, 27, 28)"); // --bg-window #1b1b1c
+    const rail = await box(tid(page, "rail"));
+    expect([rail.x, rail.y, rail.width]).toEqual([0, 42, 48]);
+    const sheet = await box(tid(page, "sheet"));
+    expect([sheet.x, sheet.y]).toEqual([48, 42]);
+    expect(await css(tid(page, "sheet"), "border-top-left-radius")).toBe("12px");
+    expect(await css(tid(page, "sheet"), "border-left-color")).toBe("rgb(31, 31, 33)"); // --border-rail #1f1f21
+  });
+
+  test("sidebar x 49–288, divider at 289, main from 290", async () => {
     const side = await box(tid(page, "sidebar"));
-    expect(Math.round(side.x)).toBe(49);
-    expect(Math.round(side.width)).toBe(240);
+    expect([side.x, side.y, side.width]).toEqual([49, 43, 240]);
+    expect(await css(tid(page, "main"), "border-left-color")).toBe("rgb(42, 42, 43)"); // --border-pane #2a2a2b
+    expect((await box(tid(page, "main"))).x).toBe(289);
+  });
+
+  test("titlebar nav buttons centred at x 99 / 133 / 167, y 20", async () => {
+    for (const [id, cx] of [["nav-back", 99], ["nav-forward", 133], ["sidebar-toggle", 167]] as const) {
+      const b = await box(tid(page, id));
+      near(b.x + b.width / 2, cx);
+      near(b.y + b.height / 2, 20);
+    }
+    const rail = await box(tid(page, "rail-chat"));
+    expect([rail.x, rail.y, rail.width, rail.height]).toEqual([5, 51, 36, 36]);
+    expect(await css(tid(page, "rail-chat"), "background-color")).toBe("rgb(41, 41, 42)"); // #29292a
+  });
+
+  test("sidebar header, New chat, Projects label and rows sit on the reference rhythm", async () => {
+    const title = tid(page, "sidebar-title");
+    expect(await css(title, "font-size")).toBe("18px");
+    expect(await css(title, "font-weight")).toBe("600");
+    const t = await box(title);
+    near(t.x, 65);
+    near(t.y + t.height / 2, 69);
+    const chat = await box(tid(page, "new-chat"));
+    expect([chat.x, chat.y, chat.height]).toEqual([57, 95, 30]);
+    const project = await box(tid(page, "project-toggle").first());
+    expect(project.y).toBe(166);
+    const row = await box(tid(page, "thread-row").first());
+    expect([row.x, row.y, row.width, row.height]).toEqual([57, 197, 213, 30]); // x 57–269, 31 px pitch from the project row
+    expect(await css(tid(page, "thread-row").first(), "border-top-left-radius")).toBe("10px");
+    const label = await box(tid(page, "thread-row-title").first());
+    near(label.x, 89);
+    expect(await css(tid(page, "thread-row-title").first(), "font-size")).toBe("14px");
   });
 });
 

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import type { BackendId, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch } from "../../shared/types";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
-import { Pill, type PillTone } from "./ui/Pill";
 
 interface Props {
   thread: Thread;
@@ -12,9 +11,6 @@ interface Props {
   onStop: () => void;
   onAnswer: (itemId: string, answer: "yes" | "no" | "always") => void;
   onUpdate: (patch: ThreadPatch) => void;
-  showChanges: boolean;
-  onToggleChanges: () => void;
-  changedCount: number;
   models: ModelInfo[];
   modelsError?: string;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -41,7 +37,7 @@ export function tailPath(p: string, max = 40): string {
   return "…" + (out || p.slice(-(max - 1)));
 }
 
-export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, onUpdate, showChanges, onToggleChanges, changedCount, models, modelsError, inputRef, onOpenPath, onOpenTerminal, platform }: Props) {
+export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, onUpdate, models, modelsError, inputRef, onOpenPath, onOpenTerminal, platform }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
 
@@ -52,23 +48,6 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
 
   return (
     <section className="thread-view" data-testid="thread-view" data-thread-id={thread.id}>
-      <header className="topbar drag">
-        <div className="crumbs">
-          <span className="crumb" data-testid="thread-project">{project.name}</span>
-          <span className="sep">/</span>
-          <input className="title-input" data-testid="thread-title" aria-label="Thread title" value={thread.title} onChange={(e) => onUpdate({ title: e.target.value })} spellCheck={false} />
-        </div>
-        <div className="topbar-right no-drag">
-          <Pill tone={thread.backend === "mock" ? "neutral" : thread.backend} data-testid="thread-backend">{thread.backend === "claude" ? "Claude" : thread.backend === "codex" ? "Codex" : "Mock"}{thread.model ? ` · ${thread.model}` : ""}</Pill>
-          {thread.auto && <Pill tone="auto" data-testid="auto-indicator" title="Auto routing is on for this thread">⚡ Auto</Pill>}
-          {thread.plan && <Pill tone="accent" data-testid="plan-indicator">▤ Plan</Pill>}
-          <Pill tone={STATUS_TONE[thread.status]} data-testid="thread-status" data-status={thread.status}>{label(thread.status)}</Pill>
-          <button className={`btn small ${showChanges ? "active" : ""}`} onClick={onToggleChanges} data-testid="changes-toggle" aria-pressed={showChanges}>
-            Changes{changedCount ? <span className="count">{changedCount}</span> : null}
-          </button>
-        </div>
-      </header>
-
       <div className="location" role="group" aria-label="Working directory" data-testid="thread-location">
         <span className="location-kind" data-testid="location-kind" data-kind={thread.worktree ? "worktree" : "local"} title={thread.worktree ? `Worktree managed by ${thread.worktree.manager === "project-script" ? "the project's scripts/worktree.sh" : "Modex"}` : "Runs directly in the project checkout"}>
           {thread.worktree ? "⑂" : "▸"}
@@ -115,12 +94,6 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
       />
     </section>
   );
-}
-
-const STATUS_TONE: Record<Thread["status"], PillTone> = { idle: "neutral", running: "accent", waiting: "warn", error: "danger" };
-
-function label(s: Thread["status"]): string {
-  return s === "waiting" ? "Needs approval" : s === "running" ? "Working" : s === "error" ? "Error" : "Idle";
 }
 
 function Item({ item, onAnswer }: { item: ThreadItem; onAnswer: Props["onAnswer"] }) {

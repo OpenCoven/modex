@@ -259,28 +259,123 @@ test("primitives: the model Menu is keyboard-driven, and icon buttons are named,
   await expect(picker).toHaveText(/Scripted mock/);
 
   // IconButton: an icon alone has no name, so every one carries an accessible label.
-  const head = tid(page, "project").first();
-  await expect(head.getByRole("button", { name: "New thread", exact: true })).toHaveAttribute("data-testid", "project-new-thread");
-  await expect(head.getByRole("button", { name: "New thread in a git worktree" })).toHaveAttribute("data-testid", "project-new-worktree-thread");
+  const project = tid(page, "project").first();
+  const newThread = tid(project, "project-new-thread");
+  await expect(newThread).toHaveAccessibleName("New thread");
+  await expect(tid(project, "project-new-worktree-thread")).toHaveAccessibleName("New thread in a git worktree");
+  const more = tid(project, "project-menu");
+  await expect(more).toHaveAccessibleName("Project actions");
   // Row actions are hidden until hover, but a keyboard user reaching one sees it, with its tooltip and shortcut.
-  const remove = tid(head, "project-remove");
-  await expect(remove).toHaveCSS("opacity", "0");
-  const newThread = tid(head, "project-new-thread");
+  await expect(more).toHaveCSS("opacity", "0");
   await newThread.focus();
   await page.keyboard.press("Tab"); // → worktree
-  await page.keyboard.press("Tab"); // → remove
-  await expect(remove).toBeFocused();
-  await expect(remove).toHaveCSS("opacity", "1");
+  await page.keyboard.press("Tab"); // → ⋯
+  await expect(more).toBeFocused();
+  await expect(more).toHaveCSS("opacity", "1");
   const tip = page.getByRole("tooltip");
-  await expect(tip).toHaveText("Remove project");
-  await expect(remove).toHaveAttribute("aria-describedby", (await tip.getAttribute("id"))!);
+  await expect(tip).toHaveText("Project actions");
+  await expect(more).toHaveAttribute("aria-describedby", (await tip.getAttribute("id"))!);
+  // The ⋯ opens a Menu: focus lands on its item, Escape hands focus back.
+  await page.keyboard.press("Enter");
+  await expect(tid(project, "project-remove")).toBeFocused();
+  await expect(tid(project, "project-remove")).toHaveRole("menuitem");
+  await page.keyboard.press("Escape");
+  await expect(tid(project, "project-remove")).toHaveCount(0);
+  await expect(more).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   await expect(page.getByRole("tooltip")).toHaveText(/New thread in a git worktree\s*⇧⌘N/);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("tooltip")).toHaveCount(0);
   // Hover opens it after the delay.
+  await page.mouse.move(900, 500);
   await newThread.hover();
   await expect(page.getByRole("tooltip")).toHaveText(/New thread\s*⌘N/);
   await page.mouse.move(900, 500);
   await expect(page.getByRole("tooltip")).toHaveCount(0);
+});
+
+test("shell: back/forward, rename, search, show more, row menus, and a sidebar that stays hidden across a relaunch", async () => {
+  const rows = tid(page, "thread-row");
+  const current = page.locator('[data-testid="thread-row"][aria-current="true"]');
+  const idOf = (l: typeof rows) => l.getAttribute("data-thread-id");
+
+  // New chat (sidebar row) and ⌘N both open a thread in the current project; each becomes current.
+  await tid(page, "new-chat").click();
+  await expect(tid(page, "composer-input")).toBeFocused();
+  const a = await idOf(current);
+  await page.keyboard.press("Meta+n");
+  await expect(current).not.toHaveAttribute("data-thread-id", a!);
+  const b = await idOf(current);
+
+  // Back / forward walk the selection history.
+  await tid(page, "nav-back").click();
+  await expect(current).toHaveAttribute("data-thread-id", a!);
+  await expect(tid(page, "nav-forward")).toBeEnabled();
+  await tid(page, "nav-forward").click();
+  await expect(current).toHaveAttribute("data-thread-id", b!);
+  await expect(tid(page, "nav-forward")).toBeDisabled();
+
+  // Rename from the titlebar: read-only until double-clicked; Escape cancels, Enter saves.
+  const title = tid(page, "thread-title");
+  await expect(title).toHaveAttribute("readonly", "");
+  await title.dblclick();
+  await page.keyboard.type("Discarded name");
+  await page.keyboard.press("Escape");
+  await expect(title).toHaveValue("New thread");
+  await title.dblclick();
+  await page.keyboard.type("Shell rename check");
+  await page.keyboard.press("Enter");
+  await expect(title).toHaveAttribute("readonly", "");
+  await expect(tid(current, "thread-row-title")).toHaveText("Shell rename check");
+
+  // Search filters thread titles client-side; Escape restores the list.
+  const total = await rows.count();
+  await tid(page, "search-toggle").click();
+  await expect(tid(page, "thread-search")).toBeFocused();
+  await page.keyboard.type("rename CHECK");
+  await expect(rows).toHaveCount(1);
+  await page.keyboard.type("zzz");
+  await expect(tid(page, "search-empty")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(tid(page, "thread-search")).toHaveCount(0);
+  await expect(rows).toHaveCount(total);
+
+  // More than five threads in a project: five show, "Show more" expands, "Show less" folds back.
+  while ((await tid(page, "thread-row").count()) < 5 || (await tid(page, "show-more").count()) === 0) {
+    await page.keyboard.press("Meta+n");
+    await expect(tid(page, "composer-input")).toBeFocused();
+  }
+  await expect(rows).toHaveCount(5);
+  await tid(page, "show-more").click();
+  await expect(tid(page, "show-more")).toHaveText("Show less");
+  const all = await rows.count();
+  expect(all).toBeGreaterThan(5);
+
+  // Row ⋯ → Delete removes the thread; back skips entries for threads that no longer exist.
+  const victim = rows.first();
+  const victimId = await idOf(victim);
+  await victim.hover();
+  await tid(victim, "thread-menu").click();
+  await tid(victim, "thread-delete").click();
+  await expect(page.locator(`[data-testid="thread-row"][data-thread-id="${victimId}"]`)).toHaveCount(0);
+  await expect(rows).toHaveCount(all - 1);
+
+  // Clicking a project folds its threads away and back.
+  const toggle = tid(page, "project-toggle").first();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(rows).toHaveCount(0);
+  await toggle.click();
+  await expect(rows).not.toHaveCount(0);
+
+  // The sidebar toggle hides it, and the choice survives a relaunch.
+  await tid(page, "sidebar-toggle").click();
+  await expect(tid(page, "sidebar")).toHaveCount(0);
+  await expect(tid(page, "sidebar-toggle")).toHaveAttribute("aria-pressed", "false");
+  await app.close();
+  ({ app, page } = await launch(home));
+  await expect(tid(page, "rail")).toBeVisible();
+  await expect(tid(page, "sidebar")).toHaveCount(0);
+  await tid(page, "sidebar-toggle").click();
+  await expect(tid(page, "sidebar")).toBeVisible();
 });
