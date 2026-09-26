@@ -25,15 +25,16 @@ export function ModelMenu({ models, model, effort, error, disabled, onModel, onE
   const selected = models.find((m) => m.id === model);
 
   const label = error ? "Models unavailable" : models.length === 0 ? "Loading models…" : selected ? selected.label : "Choose model";
-  const effortLabel = selected?.efforts?.length ? ` · ${effort ?? selected.defaultEffort ?? "default"}` : "";
+  const effortLabel = selected?.efforts?.length ? (effort ?? selected.defaultEffort ?? "default") : "";
 
   return (
     <div className="model-menu">
-      <button ref={trigger} data-testid="model-picker" className={`btn small model-trigger ${error ? "warn" : ""}`} onClick={() => setOpen((v) => !v)} disabled={disabled || (!error && models.length === 0)} title={error ?? selected?.description ?? "Model"} aria-haspopup="listbox" aria-expanded={open}>
-        <span className="model-trigger-label">{label}{effortLabel}</span>
+      <button ref={trigger} data-testid="model-picker" className={`model-trigger${error ? " warn" : ""}`} onClick={() => setOpen((v) => !v)} disabled={disabled || (!error && models.length === 0)} title={error ?? selected?.description ?? "Model"} aria-haspopup="listbox" aria-expanded={open}>
+        <span className="model-trigger-label">{label}</span>
+        {effortLabel && <span className="model-trigger-effort">{effortLabel}</span>}
         <Icon name={open ? "chevron-up" : "chevron-down"} size={12} className="chev" />
       </button>
-      <Menu open={open} onClose={() => setOpen(false)} anchorRef={trigger} role="listbox" label="Model" testId="model-menu" className="model-list">
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={trigger} role="listbox" label="Model" testId="model-menu" className="model-list" placement="top-end">
         {error && <div className="menu-error">{error}</div>}
         {models.map((m) => (
           <MenuItem key={m.id} data-testid="model-option" checkable selected={m.id === model} onClick={() => { onModel(m.id); onEffort(m.defaultEffort); if (!m.efforts?.length) setOpen(false); }}>

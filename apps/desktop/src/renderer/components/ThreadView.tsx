@@ -17,6 +17,8 @@ interface Props {
   onOpenPath: (path: string) => void;
   onOpenTerminal: (path: string) => void;
   platform: string;
+  /** The checkout's current branch (from the Changes snapshot), for the composer's context strip. */
+  branch?: string;
 }
 
 /** `/Users/val/x` → `~/x` for display; the full path stays in the tooltip and clipboard. */
@@ -37,7 +39,7 @@ export function tailPath(p: string, max = 40): string {
   return "…" + (out || p.slice(-(max - 1)));
 }
 
-export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, onUpdate, models, modelsError, inputRef, onOpenPath, onOpenTerminal, platform }: Props) {
+export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, onUpdate, models, modelsError, inputRef, onOpenPath, onOpenTerminal, platform, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
 
@@ -74,6 +76,7 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
 
       <Composer
         busy={busy}
+        context={{ project: project.name, cwd: thread.cwd, worktree: thread.worktree, branch }}
         backend={thread.backend}
         mode={thread.mode}
         plan={thread.plan}

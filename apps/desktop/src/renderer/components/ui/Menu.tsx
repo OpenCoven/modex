@@ -23,7 +23,7 @@ const MenuContext = createContext<MenuRole>("menu");
 
 /**
  * Popover list anchored to a trigger. Owns the behaviour every popover in the app shares:
- * - focus moves to the selected item (or the first) on open;
+ * - focus moves to the first item on open (in a listbox picker: the selected one);
  * - ArrowUp/ArrowDown move between items (wrapping), Home/End jump to the ends;
  * - Escape closes and returns focus to the trigger; Tab closes and lets focus move on;
  * - a pointer press outside the menu and trigger closes it.
@@ -37,7 +37,7 @@ export function Menu({ open, onClose, anchorRef, label, role = "menu", placement
   useEffect(() => {
     if (!open) return;
     const items = () => Array.from(ref.current?.querySelectorAll<HTMLElement>(ITEM) ?? []).filter((el) => !el.hasAttribute("disabled"));
-    const initial = items().find((el) => el.getAttribute("aria-selected") === "true" || el.getAttribute("aria-checked") === "true") ?? items()[0];
+    const initial = (role === "listbox" ? items().find((el) => el.getAttribute("aria-selected") === "true") : undefined) ?? items()[0];
     initial?.focus({ preventScroll: false });
 
     const onDown = (e: PointerEvent) => {
@@ -78,7 +78,7 @@ export function Menu({ open, onClose, anchorRef, label, role = "menu", placement
       document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey, true);
     };
-  }, [open, anchorRef]);
+  }, [open, anchorRef, role]);
 
   if (!open) return null;
   return (
@@ -93,22 +93,34 @@ export function Menu({ open, onClose, anchorRef, label, role = "menu", placement
 interface MenuItemProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "role"> {
   /** Marks the current choice: aria-selected in a listbox, aria-checked in a menu. */
   selected?: boolean;
-  /** Reserve a leading check column (single-choice lists). */
+  /** Reserve a leading check column: a single choice among siblings (radio). */
   checkable?: boolean;
+  /** An on/off setting (menuitemcheckbox); `selected` is its state. */
+  toggle?: boolean;
   children: ReactNode;
 }
 
 /** One row of a Menu. Its ARIA role follows the parent (option in a listbox, menuitem/menuitemradio in a menu). */
-export function MenuItem({ selected, checkable, className, children, type = "button", ...rest }: MenuItemProps) {
+export function MenuItem({ selected, checkable, toggle, className, children, type = "button", ...rest }: MenuItemProps) {
   const parent = useContext(MenuContext);
   const aria =
     parent === "listbox" ? { role: "option", "aria-selected": Boolean(selected) }
+    : toggle ? { role: "menuitemcheckbox", "aria-checked": Boolean(selected) }
     : checkable ? { role: "menuitemradio", "aria-checked": Boolean(selected) }
     : { role: "menuitem" };
   return (
     <button type={type} tabIndex={-1} className={`menu-item${selected ? " selected" : ""}${className ? ` ${className}` : ""}`} {...aria} {...rest}>
-      {checkable && <span className="menu-check">{selected ? <Icon name="check" size={14} /> : null}</span>}
+      {(checkable || toggle) && <span className="menu-check">{selected ? <Icon name="check" size={14} /> : null}</span>}
       {children}
     </button>
   );
+}
+
+/** A non-interactive heading over a group of items. */
+export function MenuLabel({ children }: { children: ReactNode }) {
+  return <div className="menu-label" role="presentation">{children}</div>;
+}
+
+export function MenuSeparator() {
+  return <div className="menu-separator" role="separator" />;
 }

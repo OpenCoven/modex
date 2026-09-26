@@ -229,6 +229,7 @@ export function App() {
               onOpenPath={openPath}
               onOpenTerminal={openTerminal}
               platform={bridge.platform}
+              branch={changes?.branch ?? undefined}
             />
           ) : (
             <EmptyState hasProjects={state.projects.length > 0} onAddProject={addProject} onNewThread={newChat} />
