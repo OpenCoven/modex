@@ -174,10 +174,40 @@ test.describe("Phase 3 · shell", () => {
 });
 
 test.describe("Phase 4 · composer", () => {
-  test.fixme("composer box is ~736×98 and centered in the main pane", async () => {
+  // Reference #1: box 736×98 at x 668–1403, y 931–1028; strip 38 px, inset 13 px; send a 34 px circle in the corner.
+  const near = (got: number, want: number, tol = 1) => expect(Math.abs(got - want), `${got} vs ${want}`).toBeLessThanOrEqual(tol);
+
+  test("box is 736×98, centred in the main pane, 16 px off the bottom", async () => {
     const c = await box(tid(page, "composer-box"));
-    expect(Math.abs(c.width - 736)).toBeLessThanOrEqual(2);
-    expect(Math.abs(c.height - 98)).toBeLessThanOrEqual(2);
+    near(c.x, 668); near(c.y, 931); near(c.width, 736); near(c.height, 98);
+    const m = await box(tid(page, "main"));
+    near(c.x + c.width / 2, m.x + 1 + (m.width - 1) / 2);
     expect(await css(tid(page, "composer-box"), "background-color")).toBe("rgb(38, 39, 41)"); // #262729
+    expect(await css(tid(page, "composer-box"), "border-top-color")).toBe("rgb(43, 44, 46)"); // #2b2c2e
+    expect(await css(tid(page, "composer-box"), "border-top-left-radius")).toBe("20px");
+  });
+
+  test("context strip sits on the box: 38 px, inset 13 px, #151517, 13 px text", async () => {
+    const c = await box(tid(page, "composer-box"));
+    const s = await box(tid(page, "composer-context"));
+    near(s.x, c.x + 13); near(s.width, c.width - 26); expect(s.height).toBe(38); near(s.y + s.height, c.y);
+    expect(await css(tid(page, "composer-context"), "background-color")).toBe("rgb(21, 21, 23)");
+    expect(await css(tid(page, "composer-context"), "font-size")).toBe("13px");
+  });
+
+  test("control row: + at x 690, access pill after it, round send in the corner", async () => {
+    const c = await box(tid(page, "composer-box"));
+    const plus = await box(tid(page, "composer-plus"));
+    near(plus.x + plus.width / 2, 690); near(plus.y + plus.height / 2, 1007);
+    const access = await box(tid(page, "access-picker"));
+    near(access.x, 708);
+    expect(await css(tid(page, "access-picker"), "font-size")).toBe("13px");
+    const send = await box(tid(page, "send"));
+    expect([send.width, send.height]).toEqual([34, 34]);
+    near(send.x + send.width, c.x + c.width - 2);
+    near(send.y + send.height, c.y + c.height - 2);
+    expect(await css(tid(page, "send"), "border-top-left-radius")).toBe("50%");
+    expect(await css(tid(page, "composer-input"), "font-size")).toBe("14px");
+    await expect(tid(page, "composer-input")).toHaveAttribute("placeholder", "Do anything");
   });
 });

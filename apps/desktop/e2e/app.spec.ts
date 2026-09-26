@@ -34,7 +34,11 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(tid(page, "thread-view")).toBeVisible();
   await expect(tid(page, "thread-row")).toHaveCount(1);
   await expect(tid(page, "composer-input")).toBeFocused();
-  await expect(tid(page, "backend-picker").getByRole("radio", { checked: true })).toHaveText("Mock");
+  // Backend lives in the composer's + menu; the mock thread shows Mock checked there.
+  await tid(page, "composer-plus").click();
+  await expect(tid(page, "backend-picker").getByRole("menuitemradio", { checked: true })).toHaveText("Mock");
+  await page.keyboard.press("Escape");
+  await expect(tid(page, "composer-plus-menu")).toHaveCount(0);
   // The header shows where the thread runs, with open/copy actions; a plain thread runs in the checkout itself.
   await expect(tid(page, "location-path")).toHaveAttribute("title", repo);
   await expect(tid(page, "location-branch")).toHaveCount(0);
@@ -74,6 +78,10 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(card).toBeVisible();
   await expect(tid(card, "approval-question")).toContainText("Allow add CONTRIBUTING.md?");
   await expect(tid(page, "thread-status")).toHaveText("Needs approval");
+  // While a turn is in flight the composer offers Stop, not Send, and the access pill is locked.
+  await expect(tid(page, "stop")).toBeVisible();
+  await expect(tid(page, "send")).toHaveCount(0);
+  await expect(tid(page, "access-picker")).toBeDisabled();
   await expect(page.locator('[data-testid="thread-row"][data-status="waiting"]')).toHaveCount(1);
   expect(fs.existsSync(path.join(repo, "CONTRIBUTING.md"))).toBe(false);
 
@@ -94,7 +102,7 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
 
   // ⇧⌘P toggles plan mode; ⌘J hides the changes panel.
   await page.keyboard.press("Meta+Shift+p");
-  await expect(tid(page, "plan-toggle")).toHaveAttribute("aria-pressed", "true");
+  await expect(tid(page, "plan-chip")).toBeVisible();
   await page.keyboard.press("Meta+j");
   await expect(tid(page, "changes-panel")).toHaveCount(0);
 
@@ -157,10 +165,13 @@ test("⚡ Auto: the judge picks a model before the turn and leaves an expandable
   // A fresh thread (default mode: chat). No TypeSafe key in this environment, so the built-in heuristic judges.
   await page.keyboard.press("Meta+n");
   await expect(tid(page, "thread-row")).toHaveCount(3);
-  await expect(tid(page, "auto-toggle")).toHaveAttribute("aria-pressed", "false");
+  await tid(page, "composer-plus").click();
+  await expect(tid(page, "auto-toggle")).toHaveAttribute("aria-checked", "false");
   await expect(tid(page, "auto-indicator")).toHaveCount(0);
+  await expect(tid(page, "auto-chip")).toHaveCount(0);
   await tid(page, "auto-toggle").click();
-  await expect(tid(page, "auto-toggle")).toHaveAttribute("aria-pressed", "true");
+  await expect(tid(page, "composer-plus-menu")).toHaveCount(0);
+  await expect(tid(page, "auto-chip")).toBeVisible();
   await expect(tid(page, "auto-indicator")).toHaveText(/Auto/);
   await tid(page, "composer-input").focus();
   await page.keyboard.type("What does this repo do?");
@@ -378,4 +389,58 @@ test("shell: back/forward, rename, search, show more, row menus, and a sidebar t
   await expect(tid(page, "sidebar")).toHaveCount(0);
   await tid(page, "sidebar-toggle").click();
   await expect(tid(page, "sidebar")).toBeVisible();
+});
+
+test("composer: context strip, access menu, plan via + and its chip, send enabled only with text", async () => {
+  await expect(tid(page, "sidebar")).toBeVisible(); // state loaded: shortcuts are live (the test also runs alone)
+  await page.keyboard.press("Meta+n");
+  await expect(tid(page, "composer-input")).toBeFocused();
+
+  // Context strip: the project, where the thread runs, and the checkout's branch.
+  await expect(tid(page, "context-project")).toHaveText(path.basename(repo));
+  await expect(tid(page, "context-kind")).toHaveAttribute("data-kind", "local");
+  await expect(tid(page, "context-kind")).toHaveText("Local");
+  await expect(tid(page, "context-branch")).toHaveText("main");
+  await expect(tid(page, "composer-context")).toHaveAttribute("title", repo);
+
+  // Send is disabled until there is text.
+  await expect(tid(page, "send")).toBeDisabled();
+  await page.keyboard.type("hello");
+  await expect(tid(page, "send")).toBeEnabled();
+  await tid(page, "composer-input").fill("");
+  await expect(tid(page, "send")).toBeDisabled();
+
+  // Access pill = the thread's mode. Only full access is orange.
+  const access = tid(page, "access-picker");
+  await expect(access).toHaveAttribute("data-mode", "chat");
+  await expect(access).toHaveText("Read only");
+  await access.click();
+  await expect(tid(page, "access-option")).toHaveCount(3);
+  await expect(page.locator('[data-testid="access-option"][aria-checked="true"]')).toHaveAttribute("data-mode", "chat");
+  await page.locator('[data-testid="access-option"][data-mode="full-access"]').click();
+  await expect(tid(page, "access-menu")).toHaveCount(0);
+  await expect(access).toHaveAttribute("data-mode", "full-access");
+  await expect(access).toHaveText("Full access");
+  await expect(access).toHaveCSS("color", "rgb(220, 146, 88)"); // --accent-warn #dc9258
+  await access.click();
+  await page.locator('[data-testid="access-option"][data-mode="chat"]').click();
+  await expect(access).toHaveAttribute("data-mode", "chat");
+  await expect(access).not.toHaveCSS("color", "rgb(220, 146, 88)");
+
+  // + opens with focus on its first item (Plan mode); choosing it turns plan on and shows the chip.
+  await tid(page, "composer-plus").click();
+  await expect(tid(page, "plan-toggle")).toBeFocused();
+  await expect(tid(page, "plan-toggle")).toHaveAttribute("aria-checked", "false");
+  await page.keyboard.press("Enter");
+  await expect(tid(page, "composer-plus-menu")).toHaveCount(0);
+  await expect(tid(page, "plan-chip")).toBeVisible();
+  await expect(tid(page, "plan-indicator")).toBeVisible();
+  await expect(tid(page, "composer-input")).toHaveAttribute("placeholder", /nothing will be edited/);
+  await tid(page, "composer-plus").click();
+  await expect(tid(page, "plan-toggle")).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
+  // The chip turns it off again.
+  await tid(page, "plan-chip").click();
+  await expect(tid(page, "plan-chip")).toHaveCount(0);
+  await expect(tid(page, "plan-indicator")).toHaveCount(0);
 });
