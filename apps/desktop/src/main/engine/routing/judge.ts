@@ -69,7 +69,7 @@ export function stateFor(input: { text: string; backend: BackendId; model: strin
   const recent: RoutingState["recent"] = [];
   for (const it of input.items.slice(-12)) {
     if (it.kind === "user") recent.push({ role: "user", text: clip(it.text, 300) });
-    else if (it.kind === "assistant" && it.text.trim()) recent.push({ role: "assistant", text: clip(it.text, 240) });
+    else if (it.kind === "assistant" && it.text.trim()) recent.push({ role: "assistant", text: "[assistant turn]" });
     else if (it.kind === "tool") recent.push({ role: "tool", text: clip(it.title, 120) });
   }
   return {
