@@ -72,6 +72,7 @@ export function httpTransport(apiKey: string, opts: { fetchImpl?: typeof fetch; 
   const endpoint = opts.endpoint ?? JEV_ENDPOINT;
   return async (req, signal) => {
     const ac = new AbortController();
+    if (signal?.aborted) ac.abort();
     const timer = setTimeout(() => ac.abort(), timeoutMs);
     const onOuter = () => ac.abort();
     signal?.addEventListener("abort", onOuter, { once: true });
