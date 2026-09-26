@@ -41,7 +41,7 @@ export class CodexBackend implements Backend {
         this.child = null;
         this.ready = null;
       });
-      this.request("initialize", { clientInfo: { name: "modex", title: "Modex", version: "0.3.0" }, capabilities: {} })
+      this.request("initialize", { clientInfo: { name: "modex", title: "Modex", version: process.env.MODEX_VERSION ?? "0.0.1" }, capabilities: {} })
         .then(() => {
           this.notify("initialized", {});
           resolve();

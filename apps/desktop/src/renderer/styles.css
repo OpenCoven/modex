@@ -289,3 +289,6 @@ kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1px sol
 .key-actions { display: flex; flex-direction: column; gap: 6px; padding-top: 22px; }
 .routing-test { font-size: 12px; margin: 0 0 8px; color: var(--fg-2); }
 .routing-test.ok { color: var(--ok, #7ddc9a); }
+/* Grid cells may shrink below their content, so long fields never widen the dialog. */
+.grid2 > * { min-width: 0; }
+.field input, .field select { max-width: 100%; box-sizing: border-box; }
