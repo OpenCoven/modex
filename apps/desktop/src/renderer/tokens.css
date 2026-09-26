@@ -17,6 +17,8 @@
   --bg-elevated: #1f1f21;        /* derived: menus, dialogs, tool rows */
   --bg-sunken: #0b0b0d;          /* derived: command output, diff wells */
 
+  --bg-rail-active: #29292a;     /* measured: rail Home button (5–40 × 51–86) */
+
   /* Lines */
   --border-pane: #2a2a2b;        /* measured: sidebar/main divider */
   --border-rail: #1f1f21;        /* measured: rail/sidebar edge */
@@ -70,6 +72,13 @@
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
+
+  /* Shell geometry (measured, screenshot #1) */
+  --titlebar-h: 42px;            /* y 0–41; the sheet's 1 px top border sits at y 42 */
+  --rail-w: 48px;                /* x 0–47; the sheet's 1 px left border sits at x 48 */
+  --sidebar-w: 240px;            /* x 49–288; 1 px divider at x 289 */
+  --row-h: 30px;                 /* sidebar rows, 31 px pitch */
+  --radius-sheet: 12px;          /* content sheet corners */
 
   /* Motion */
   --ease-out: cubic-bezier(0.2, 0, 0, 1);

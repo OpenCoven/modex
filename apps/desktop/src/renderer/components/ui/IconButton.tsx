@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, Ref } from "react";
 import { Icon, type IconName } from "./Icon";
 import { Tooltip } from "./Tooltip";
 
@@ -9,7 +9,9 @@ interface Props extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"
   shortcut?: string;
   /** Hidden until the parent row is hovered (sidebar rows). */
   reveal?: boolean;
-  size?: "sm" | "md";
+  /** sm 22px (row actions), md 28px (titlebar), lg 36px (rail). */
+  size?: "sm" | "md" | "lg";
+  ref?: Ref<HTMLButtonElement>;
   tooltipSide?: "top" | "bottom";
 }
 

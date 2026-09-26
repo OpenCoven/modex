@@ -24,6 +24,9 @@ const demo = flag("demo");
 const screenshotDir = flag("screenshot");
 const home = demo ? fs.mkdtempSync(path.join(os.tmpdir(), "modex-demo-")) : process.env.MODEX_HOME ?? path.join(os.homedir(), ".modex");
 fs.mkdirSync(home, { recursive: true });
+// An isolated home (e2e, demo) also gets its own Chromium profile, so renderer preferences in
+// localStorage (sidebar open/closed) never leak between runs or into the user's real app.
+if (demo || process.env.MODEX_HOME) app.setPath("userData", path.join(home, "electron"));
 
 // A Finder/Dock launch inherits launchd's minimal PATH, which hides claude, codex, and jev.
 // Resolve the user's login-shell PATH once, in the background, and make every channel that
@@ -138,7 +141,7 @@ function createWindow(): BrowserWindow {
     // e2e captures run at the 1786×1049 reference size; CI runners have smaller displays, and macOS
     // otherwise clamps the window to the screen (1024×677 on the GitHub macOS runner).
     enableLargerThanScreen: Boolean(process.env.MODEX_E2E),
-    trafficLightPosition: { x: 14, y: 16 },
+    trafficLightPosition: { x: 14, y: 14 }, // centred in the 42 px titlebar (reference: lights at y 14–25)
     show: false,
     webPreferences: { preload: path.join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });

@@ -6,6 +6,11 @@ import { ThreadView } from "./components/ThreadView";
 import { ChangesPanel } from "./components/ChangesPanel";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { EmptyState } from "./components/EmptyState";
+import { TitleBar } from "./components/TitleBar";
+import { Rail } from "./components/Rail";
+import { useSelectionHistory } from "./history";
+
+const SIDEBAR_KEY = "modex.sidebar";
 
 export function App() {
   const [state, setState] = useState<AppState | null>(null);
@@ -14,6 +19,7 @@ export function App() {
   const [changes, setChanges] = useState<ChangesSnapshot | null>(null);
   const [showChanges, setShowChanges] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem(SIDEBAR_KEY) !== "closed");
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -59,6 +65,8 @@ export function App() {
   }, [selected, loadChanges]);
 
   const thread = useMemo(() => state?.threads.find((t) => t.id === selected) ?? null, [state, selected]);
+  const history = useSelectionHistory(selected, setSelected, (id) => Boolean(state?.threads.some((t) => t.id === id)));
+  useEffect(() => localStorage.setItem(SIDEBAR_KEY, sidebarOpen ? "open" : "closed"), [sidebarOpen]);
 
   // Model catalogue per backend, fetched lazily from the CLIs (Codex: live `model/list`).
   useEffect(() => {
@@ -171,49 +179,69 @@ export function App() {
 
   if (!state) return <div className="app loading">Loading…</div>;
 
+  const newChat = () => {
+    const pid = thread?.projectId ?? state.projects[0]?.id;
+    if (pid) void newThread(pid);
+  };
+
   return (
-    <div className="app">
-      <Sidebar
-        state={state}
-        selected={selected}
-        onSelect={setSelected}
-        onAddProject={addProject}
-        onNewThread={newThread}
-        onDeleteThread={deleteThread}
-        onRemoveProject={removeProject}
-        onOpenSettings={() => setShowSettings(true)}
+    <div className={`app${sidebarOpen ? "" : " sidebar-closed"}`}>
+      <TitleBar
+        thread={thread}
+        onRename={(title) => void updateThread({ title })}
+        canBack={history.canBack}
+        canForward={history.canForward}
+        onBack={history.back}
+        onForward={history.forward}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
+        showChanges={showChanges}
+        onToggleChanges={() => setShowChanges((v) => !v)}
+        changedCount={changes?.files.length ?? 0}
       />
-      <main className="main">
-        {thread && project ? (
-          <ThreadView
-            thread={thread}
-            project={project}
-            items={items[thread.id] ?? []}
-            onSend={send}
-            onStop={stop}
-            onAnswer={answer}
-            onUpdate={updateThread}
-            showChanges={showChanges}
-            onToggleChanges={() => setShowChanges((v) => !v)}
-            changedCount={changes?.files.length ?? 0}
-            models={models[thread.backend]?.models ?? []}
-            modelsError={models[thread.backend]?.error}
-            inputRef={inputRef}
-            onOpenPath={openPath}
-            onOpenTerminal={openTerminal}
-            platform={bridge.platform}
+      <Rail onOpenSettings={() => setShowSettings(true)} />
+      <div className="sheet" data-testid="sheet">
+        {sidebarOpen && (
+          <Sidebar
+            state={state}
+            selected={selected}
+            onSelect={setSelected}
+            onAddProject={addProject}
+            onNewChat={newChat}
+            onNewThread={newThread}
+            onDeleteThread={deleteThread}
+            onRemoveProject={removeProject}
           />
-        ) : (
-          <EmptyState hasProjects={state.projects.length > 0} onAddProject={addProject} onNewThread={() => state.projects[0] && newThread(state.projects[0].id)} />
         )}
-        {error && (
-          <div className="toast" role="alert">
-            <span>{error}</span>
-            <button onClick={() => setError(null)} aria-label="Dismiss">×</button>
-          </div>
-        )}
-      </main>
-      {thread && showChanges && <ChangesPanel thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert} />}
+        <main className="main" data-testid="main">
+          {thread && project ? (
+            <ThreadView
+              thread={thread}
+              project={project}
+              items={items[thread.id] ?? []}
+              onSend={send}
+              onStop={stop}
+              onAnswer={answer}
+              onUpdate={updateThread}
+              models={models[thread.backend]?.models ?? []}
+              modelsError={models[thread.backend]?.error}
+              inputRef={inputRef}
+              onOpenPath={openPath}
+              onOpenTerminal={openTerminal}
+              platform={bridge.platform}
+            />
+          ) : (
+            <EmptyState hasProjects={state.projects.length > 0} onAddProject={addProject} onNewThread={newChat} />
+          )}
+          {error && (
+            <div className="toast" role="alert">
+              <span>{error}</span>
+              <button onClick={() => setError(null)} aria-label="Dismiss">×</button>
+            </div>
+          )}
+        </main>
+        {thread && showChanges && <ChangesPanel thread={thread} changes={changes} onRefresh={() => loadChanges(thread.id)} onRevert={revert} />}
+      </div>
       {showSettings && <SettingsDialog settings={state.settings} onSave={saveSettings} onClose={() => setShowSettings(false)} />}
     </div>
   );

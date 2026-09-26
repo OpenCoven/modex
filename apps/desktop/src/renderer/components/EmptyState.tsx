@@ -9,7 +9,6 @@ interface Props {
 export function EmptyState({ hasProjects, onAddProject, onNewThread }: Props) {
   return (
     <div className="empty" data-testid="empty-state">
-      <div className="drag topbar" />
       <div className="empty-card">
         <div className="brand-mark big">◆</div>
         <h1 data-testid="empty-title">What are we building?</h1>
