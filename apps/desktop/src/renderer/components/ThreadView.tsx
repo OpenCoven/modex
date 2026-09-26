@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { BackendId, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch } from "../../shared/types";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
+import { Pill, type PillTone } from "./ui/Pill";
 
 interface Props {
   thread: Thread;
@@ -58,10 +59,10 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
           <input className="title-input" data-testid="thread-title" aria-label="Thread title" value={thread.title} onChange={(e) => onUpdate({ title: e.target.value })} spellCheck={false} />
         </div>
         <div className="topbar-right no-drag">
-          <span className={`pill backend ${thread.backend}`} data-testid="thread-backend">{thread.backend === "claude" ? "Claude" : thread.backend === "codex" ? "Codex" : "Mock"}{thread.model ? ` · ${thread.model}` : ""}</span>
-          {thread.auto && <span className="pill auto" data-testid="auto-indicator" title="Auto routing is on for this thread">⚡ Auto</span>}
-          {thread.plan && <span className="pill plan" data-testid="plan-indicator">▤ Plan</span>}
-          <span className={`pill status ${thread.status}`} data-testid="thread-status" data-status={thread.status}>{label(thread.status)}</span>
+          <Pill tone={thread.backend === "mock" ? "neutral" : thread.backend} data-testid="thread-backend">{thread.backend === "claude" ? "Claude" : thread.backend === "codex" ? "Codex" : "Mock"}{thread.model ? ` · ${thread.model}` : ""}</Pill>
+          {thread.auto && <Pill tone="auto" data-testid="auto-indicator" title="Auto routing is on for this thread">⚡ Auto</Pill>}
+          {thread.plan && <Pill tone="accent" data-testid="plan-indicator">▤ Plan</Pill>}
+          <Pill tone={STATUS_TONE[thread.status]} data-testid="thread-status" data-status={thread.status}>{label(thread.status)}</Pill>
           <button className={`btn small ${showChanges ? "active" : ""}`} onClick={onToggleChanges} data-testid="changes-toggle" aria-pressed={showChanges}>
             Changes{changedCount ? <span className="count">{changedCount}</span> : null}
           </button>
@@ -115,6 +116,8 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
     </section>
   );
 }
+
+const STATUS_TONE: Record<Thread["status"], PillTone> = { idle: "neutral", running: "accent", waiting: "warn", error: "danger" };
 
 function label(s: Thread["status"]): string {
   return s === "waiting" ? "Needs approval" : s === "running" ? "Working" : s === "error" ? "Error" : "Idle";

@@ -41,7 +41,7 @@ test.beforeAll(async () => {
   ({ app, page } = await launch(home));
   // Content size, not window size: the capture must match the reference pixel for pixel.
   await app.evaluate(({ BrowserWindow }, s) => BrowserWindow.getAllWindows()[0]!.setContentSize(s.width, s.height), REFERENCE);
-  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeGreaterThan(1000);
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(REFERENCE.width);
 });
 
 test.afterAll(async () => {
@@ -50,12 +50,11 @@ test.afterAll(async () => {
 });
 
 test("captures every named chat state at the reference size", async () => {
-  // A small screen clamps the window; record what we got rather than failing on the runner's display.
+  // MODEX_E2E opens the window with enableLargerThanScreen, so even a small CI display must give the full
+  // reference size. Printed as well as asserted: the list reporter drops annotations.
   const vp = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
-  const note = `${vp.width}×${vp.height} (reference ${REFERENCE.width}×${REFERENCE.height})${vp.width === REFERENCE.width && vp.height === REFERENCE.height ? "" : " — CLAMPED by this display"}`;
-  test.info().annotations.push({ type: "viewport", description: note });
-  // The list reporter drops annotations; print it so CI logs show the size the captures were taken at.
-  console.log(`[ui:capture] viewport ${note}`);
+  console.log(`[ui:capture] viewport ${vp.width}×${vp.height} (reference ${REFERENCE.width}×${REFERENCE.height})`);
+  expect(vp, "capture viewport must match the reference; the window was clamped to the display").toEqual(REFERENCE);
 
   await expect(tid(page, "empty-state")).toBeVisible();
   await capture("01-empty");
@@ -95,8 +94,27 @@ test("captures every named chat state at the reference size", async () => {
 // ── Parity targets. Flip each block on in the phase that implements it. ──────────────────────
 
 test.describe("Phase 2 · tokens", () => {
-  test.fixme("surface colors match the reference", async () => {
+  // Sampled from the 1× reference screenshots; coordinates in design/tokens.md. A change here is a design decision.
+  const MEASURED: Record<string, string> = {
+    "--bg-window": "#1b1b1c", "--bg-sidebar": "#131315", "--bg-main": "#0f0f11", "--bg-row-selected": "#222224",
+    "--bg-composer": "#262729", "--bg-composer-context": "#151517", "--bg-user-bubble": "#1a1a1c",
+    "--border-pane": "#2a2a2b", "--border-rail": "#1f1f21", "--border-composer": "#2b2c2e", "--rule": "#1f1f21",
+    "--text-1": "#e3e4e6", "--text-2": "#c4c5c6", "--text-3": "#757577", "--text-4": "#5c5c5f", "--text-placeholder": "#535455",
+    "--accent-warn": "#dc9258", "--text-sm": "13px", "--text-md": "14px", "--text-lg": "18px", "--text-xl": "28px",
+    "--radius-row": "10px", "--radius-composer": "20px",
+  };
+
+  test("measured tokens resolve to their sampled values", async () => {
+    const got = await page.evaluate((names) => {
+      const cs = getComputedStyle(document.documentElement);
+      return Object.fromEntries(names.map((n) => [n, cs.getPropertyValue(n).trim()]));
+    }, Object.keys(MEASURED));
+    expect(got).toEqual(MEASURED);
+  });
+
+  test("surface and text colors match the reference", async () => {
     expect(await css(page.locator("body"), "background-color")).toBe("rgb(15, 15, 17)"); // --bg-main #0f0f11
+    expect(await css(page.locator("body"), "color")).toBe("rgb(227, 228, 230)"); // --text-1 #e3e4e6
     expect(await css(tid(page, "sidebar"), "background-color")).toBe("rgb(19, 19, 21)"); // --bg-sidebar #131315
   });
 });

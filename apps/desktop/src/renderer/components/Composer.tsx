@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { BackendId, Mode, ModelInfo } from "../../shared/types";
 import { BACKENDS, MODES } from "../../shared/types";
 import { ModelMenu } from "./ModelMenu";
+import { Kbd } from "./ui/Kbd";
 
 interface Props {
   busy: boolean;
@@ -88,7 +89,7 @@ export function Composer({ busy, backend, mode, plan, model, effort, auto, model
           {busy ? (
             <button className="btn danger" onClick={onStop} data-testid="stop">■ Stop</button>
           ) : (
-            <button className="btn primary send" data-testid="send" onClick={submit} disabled={!text.trim()}>Send <kbd>⌘⏎</kbd></button>
+            <button className="btn primary send" data-testid="send" onClick={submit} disabled={!text.trim()}>Send <Kbd>⌘⏎</Kbd></button>
           )}
         </div>
         {modelsError && <div className="composer-warn">⚠ {modelsError}</div>}

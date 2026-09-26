@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ChangesSnapshot, Thread } from "../../shared/types";
 import { bridge } from "../bridge";
+import { Pill } from "./ui/Pill";
 
 interface Props {
   thread: Thread;
@@ -31,7 +32,7 @@ export function ChangesPanel({ thread, changes, onRefresh, onRevert }: Props) {
     <aside className="changes" data-testid="changes-panel">
       <header className="changes-head drag">
         <span className="changes-title">Changes</span>
-        {changes?.branch && <span className="pill mono">{changes.branch}</span>}
+        {changes?.branch && <Pill className="mono">{changes.branch}</Pill>}
         <span className="spacer" />
         <span className="stat add">+{totals.a}</span>
         <span className="stat del">−{totals.d}</span>

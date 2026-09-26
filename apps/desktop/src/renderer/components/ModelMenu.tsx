@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { ModelInfo } from "../../shared/types";
+import { Icon } from "./ui/Icon";
+import { Menu, MenuItem } from "./ui/Menu";
 
 interface Props {
   models: ModelInfo[];
@@ -14,62 +16,44 @@ interface Props {
 /**
  * Codex-App-style model picker: a popover listing exactly the models the CLI reports
  * (name + description, default marked) and, for models that support it, a reasoning-effort
- * row. There is no free-text entry — a model is always one the CLI can run.
+ * row. There is no free-text entry — a model is always one the CLI can run. Popover behaviour
+ * (focus, arrow keys, Escape, outside click) comes from the shared Menu primitive.
  */
 export function ModelMenu({ models, model, effort, error, disabled, onModel, onEffort }: Props) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   const selected = models.find((m) => m.id === model);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
 
   const label = error ? "Models unavailable" : models.length === 0 ? "Loading models…" : selected ? selected.label : "Choose model";
   const effortLabel = selected?.efforts?.length ? ` · ${effort ?? selected.defaultEffort ?? "default"}` : "";
 
   return (
-    <div className="model-menu" ref={ref}>
-      <button data-testid="model-picker" className={`btn small model-trigger ${error ? "warn" : ""}`} onClick={() => setOpen((v) => !v)} disabled={disabled || (!error && models.length === 0)} title={error ?? selected?.description ?? "Model"} aria-haspopup="listbox" aria-expanded={open}>
+    <div className="model-menu">
+      <button ref={trigger} data-testid="model-picker" className={`btn small model-trigger ${error ? "warn" : ""}`} onClick={() => setOpen((v) => !v)} disabled={disabled || (!error && models.length === 0)} title={error ?? selected?.description ?? "Model"} aria-haspopup="listbox" aria-expanded={open}>
         <span className="model-trigger-label">{label}{effortLabel}</span>
-        <span className="chev">{open ? "▴" : "▾"}</span>
+        <Icon name={open ? "chevron-up" : "chevron-down"} size={12} className="chev" />
       </button>
-      {open && (
-        <div className="menu" role="listbox" aria-label="Model" data-testid="model-menu">
-          {error && <div className="menu-error">{error}</div>}
-          {models.map((m) => (
-            <button key={m.id} data-testid="model-option" role="option" aria-selected={m.id === model} className={`menu-item ${m.id === model ? "selected" : ""}`} onClick={() => { onModel(m.id); onEffort(m.defaultEffort); if (!m.efforts?.length) setOpen(false); }}>
-              <span className="menu-check">{m.id === model ? "✓" : ""}</span>
-              <span className="menu-body">
-                <span className="menu-title" data-testid="model-option-title">{m.label}{m.isDefault ? <span className="menu-default">default</span> : null}</span>
-                {m.description && <span className="menu-desc">{m.description}</span>}
-                {m.id === model && m.efforts?.length ? (
-                  <span className="effort-row" role="radiogroup" aria-label="Reasoning effort">
-                    <span className="effort-label">Reasoning</span>
-                    {m.efforts.map((e) => (
-                      <span key={e} role="radio" aria-checked={(effort ?? m.defaultEffort) === e} className={`effort-pill ${(effort ?? m.defaultEffort) === e ? "on" : ""}`} onClick={(ev) => { ev.stopPropagation(); onEffort(e); setOpen(false); }}>
-                        {e}
-                      </span>
-                    ))}
-                  </span>
-                ) : null}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      <Menu open={open} onClose={() => setOpen(false)} anchorRef={trigger} role="listbox" label="Model" testId="model-menu" className="model-list">
+        {error && <div className="menu-error">{error}</div>}
+        {models.map((m) => (
+          <MenuItem key={m.id} data-testid="model-option" checkable selected={m.id === model} onClick={() => { onModel(m.id); onEffort(m.defaultEffort); if (!m.efforts?.length) setOpen(false); }}>
+            <span className="menu-body">
+              <span className="menu-title" data-testid="model-option-title">{m.label}{m.isDefault ? <span className="menu-default">default</span> : null}</span>
+              {m.description && <span className="menu-desc">{m.description}</span>}
+              {m.id === model && m.efforts?.length ? (
+                <span className="effort-row" role="radiogroup" aria-label="Reasoning effort">
+                  <span className="effort-label">Reasoning</span>
+                  {m.efforts.map((e) => (
+                    <span key={e} role="radio" aria-checked={(effort ?? m.defaultEffort) === e} className={`effort-pill ${(effort ?? m.defaultEffort) === e ? "on" : ""}`} onClick={(ev) => { ev.stopPropagation(); onEffort(e); setOpen(false); }}>
+                      {e}
+                    </span>
+                  ))}
+                </span>
+              ) : null}
+            </span>
+          </MenuItem>
+        ))}
+      </Menu>
     </div>
   );
 }
