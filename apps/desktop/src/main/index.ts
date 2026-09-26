@@ -33,6 +33,7 @@ const pathReady = hydratePath(process.env).then(
   (err: Error) => { console.error("[modex] login-shell PATH failed:", err.message); return null; },
 );
 
+process.env.MODEX_VERSION ??= app.getVersion();
 const store = new Store(home);
 let win: BrowserWindow | null = null;
 const emit = (event: ThreadEvent): void => {

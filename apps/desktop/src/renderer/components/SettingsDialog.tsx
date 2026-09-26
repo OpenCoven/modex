@@ -67,7 +67,7 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Settings">
         <h2>Settings</h2>
-        <p className="hint" style={{ margin: "0 0 12px" }}>Modex drives the Claude Code and Codex CLIs on this machine. It never calls a model API directly and never stores credentials — log in with <code>claude</code> and <code>codex login</code>.</p>
+        <p className="hint" style={{ margin: "0 0 12px" }}>Modex drives the Claude Code and Codex CLIs on this machine and never calls a model API for a coding turn — log in with <code>claude</code> and <code>codex login</code>. The only credential it can hold is an optional TypeSafe key for Auto routing, kept in the OS keychain.</p>
         <label className="field">
           <span>Default backend for new threads</span>
           <select value={s.default_backend} onChange={(e) => set("default_backend", e.target.value as BackendId)}>
