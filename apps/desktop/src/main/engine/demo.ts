@@ -31,7 +31,8 @@ export async function runDemo(o: DemoOptions): Promise<void> {
   // A second, finished thread so the sidebar shows history.
   const earlier = await o.runner.createThread(project.id, { mode: "agent", backend: "mock" });
   o.runner.updateThread(earlier.id, { title: "Explain the approval policy module" });
-  const thread = await o.runner.createThread(project.id, { mode: "chat", backend: "mock" });
+  // Auto is on for the demo thread so the transcript shows a routing decision (heuristic when no key).
+  const thread = await o.runner.createThread(project.id, { mode: "chat", backend: "mock", auto: true });
   const turn = o.runner.send(thread.id, "Add a CONTRIBUTING.md with the three-step workflow (install, test, PR).");
   await waitFor(() => o.runner.status(thread.id) === "waiting" || o.runner.status(thread.id) === "idle" || o.runner.status(thread.id) === "error");
   await settle();

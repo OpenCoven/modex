@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import type { AppState, Project, Settings, Thread, ThreadItem } from "../../shared/types.js";
+import type { AppState, BackendId, EffortLevel, Project, RoutingPolicy, Settings, Thread, ThreadItem } from "../../shared/types.js";
+import { DEFAULT_ROUTING, EFFORT_LEVELS } from "../../shared/types.js";
 
 export const DEFAULT_SETTINGS: Settings = {
   default_backend: "codex",
@@ -9,7 +10,27 @@ export const DEFAULT_SETTINGS: Settings = {
   default_model: { codex: "", claude: "", mock: "mock" },
   claude_bin: "claude",
   codex_bin: "codex",
+  routing: { ...DEFAULT_ROUTING },
 };
+
+/** Fills in and type-checks the routing policy; anything odd falls back to the default. */
+export function migrateRouting(raw: unknown): RoutingPolicy {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const d = DEFAULT_ROUTING;
+  const isBackend = (b: unknown): b is BackendId => b === "claude" || b === "codex" || b === "mock";
+  const num = (v: unknown, lo: number, hi: number, fallback: number) => (typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi ? v : fallback);
+  return {
+    auto_by_default: typeof r.auto_by_default === "boolean" ? r.auto_by_default : d.auto_by_default,
+    posture: r.posture === "economy" || r.posture === "balanced" || r.posture === "quality" ? r.posture : d.posture,
+    allow_backends: Array.isArray(r.allow_backends) ? (r.allow_backends.filter(isBackend) as BackendId[]) : [...d.allow_backends],
+    allow_backend_switch: typeof r.allow_backend_switch === "boolean" ? r.allow_backend_switch : d.allow_backend_switch,
+    max_effort: EFFORT_LEVELS.includes(r.max_effort as EffortLevel) ? (r.max_effort as EffortLevel) : d.max_effort,
+    allow_fast: typeof r.allow_fast === "boolean" ? r.allow_fast : d.allow_fast,
+    min_confidence: num(r.min_confidence, 0, 1, d.min_confidence),
+    premium_turns_per_day: r.premium_turns_per_day === null ? null : typeof r.premium_turns_per_day === "number" && r.premium_turns_per_day >= 0 ? Math.floor(r.premium_turns_per_day) : d.premium_turns_per_day,
+    jev_model: typeof r.jev_model === "string" && r.jev_model.trim() ? r.jev_model.trim() : d.jev_model,
+  };
+}
 
 /** Accepts older state files (pre-CLI-backend settings) and fills in defaults. */
 export function migrateSettings(raw: unknown): Settings {
@@ -23,6 +44,7 @@ export function migrateSettings(raw: unknown): Settings {
     claude_bin: typeof r.claude_bin === "string" && r.claude_bin ? r.claude_bin : DEFAULT_SETTINGS.claude_bin,
     codex_bin: typeof r.codex_bin === "string" && r.codex_bin ? r.codex_bin : DEFAULT_SETTINGS.codex_bin,
     ...(typeof r.mock_script === "string" ? { mock_script: r.mock_script } : {}),
+    routing: migrateRouting(r.routing),
   };
 }
 
@@ -72,7 +94,7 @@ export class Store {
   }
 
   updateSettings(patch: Partial<Settings>): Settings {
-    this.state.settings = { ...this.state.settings, ...patch };
+    this.state.settings = { ...this.state.settings, ...patch, ...(patch.routing ? { routing: migrateRouting({ ...this.state.settings.routing, ...patch.routing }) } : {}) };
     this.write();
     return this.settings;
   }

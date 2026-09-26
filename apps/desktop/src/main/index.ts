@@ -56,7 +56,7 @@ handle("project:remove", ({ projectId }) => {
   store.removeProject(projectId);
   return store.snapshot();
 });
-handle("thread:create", ({ projectId, worktree, mode, model, backend }) => runner.createThread(projectId, { worktree, mode, model, backend }));
+handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
 handle("thread:items", ({ threadId }) => runner.items(threadId));
 handle("thread:send", async ({ threadId, text }) => {
   try {
@@ -84,6 +84,11 @@ handle("changes:revert", async ({ threadId, path: rel }) => {
 });
 handle("settings:update", (patch) => store.updateSettings(patch));
 handle("models:list", ({ backend }) => runner.listModels(backend));
+handle("routing:status", () => runner.router.status());
+handle("routing:reset", () => {
+  runner.router.fit.reset();
+  return runner.router.status();
+});
 handle("backends:health", async () => {
   const out = {} as Record<BackendId, { ok: boolean; detail: string }>;
   for (const id of ["claude", "codex", "mock"] as BackendId[]) {

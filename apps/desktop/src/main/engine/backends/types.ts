@@ -1,4 +1,6 @@
-import type { ApprovalAnswer, BackendId, Mode } from "../../../shared/types.js";
+import type { ApprovalAnswer, BackendId, Mode, ModelInfo } from "../../../shared/types.js";
+
+export type { ModelInfo };
 
 export interface ToolStart {
   id: string;
@@ -45,8 +47,10 @@ export interface TurnOptions {
   /** Plan mode: think and propose, never edit. */
   plan: boolean;
   model: string;
-  /** Reasoning effort (Codex). */
+  /** Reasoning effort (Codex `effort`, Claude `--effort`). */
   effort?: string;
+  /** Fast mode for this turn (Codex "fast" service tier, Claude fastMode setting). */
+  fast?: boolean;
   /** Resumable handle from a previous turn on this thread. */
   resume?: string;
   /** Extra directories the agent may write to (worktree threads pass the project root). */
@@ -65,15 +69,6 @@ export interface Backend {
   /** Current model catalogue for this backend. */
   listModels(): Promise<ModelInfo[]>;
   dispose(): Promise<void>;
-}
-
-export interface ModelInfo {
-  id: string;
-  label: string;
-  description?: string;
-  isDefault?: boolean;
-  efforts?: string[];
-  defaultEffort?: string;
 }
 
 /** Splits a byte stream into complete lines; keeps the trailing partial line. */

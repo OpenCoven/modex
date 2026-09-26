@@ -43,7 +43,7 @@ let repo: string;
 
 test.beforeAll(async () => {
   ({ home, repo } = seedHome());
-  app = await electron.launch({ args: [appDir], cwd: appDir, env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1" } });
+  app = await electron.launch({ args: [appDir], cwd: appDir, env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1", MODEX_NO_LOGIN_PATH: "1", TYPESAFE_API_KEY: "" } });
   page = await app.firstWindow();
   await page.waitForLoadState("domcontentloaded");
 });
@@ -173,11 +173,51 @@ test("⇧⌘N creates a worktree thread and the header shows its branch and path
 
 test("state survives a relaunch: the thread and its transcript are restored", async () => {
   await app.close();
-  app = await electron.launch({ args: [appDir], cwd: appDir, env: { ...process.env, MODEX_HOME: home } });
+  app = await electron.launch({ args: [appDir], cwd: appDir, env: { ...process.env, MODEX_HOME: home, MODEX_NO_LOGIN_PATH: "1", TYPESAFE_API_KEY: "" } });
   page = await app.firstWindow();
   await expect(page.locator(".threads .thread")).toHaveCount(2);
   await page.locator(".threads .thread").nth(1).click();
   await expect(page.locator(".approval .approval-answer")).toHaveText("Approved");
   await expect(page.locator(".msg.assistant").last()).toContainText("added CONTRIBUTING.md");
   await expect(page.locator(".pill.plan")).toHaveText(/Plan/);
+});
+
+test("⚡ Auto: the judge picks a model before the turn and leaves an expandable receipt", async () => {
+  // A fresh thread (default mode: chat). No TypeSafe key in this environment, so the built-in heuristic judges.
+  await page.keyboard.press("Meta+n");
+  await expect(page.locator(".threads .thread")).toHaveCount(3);
+  await expect(page.locator(".btn.toggle.auto")).not.toHaveClass(/on/);
+  await expect(page.locator(".pill.auto")).toHaveCount(0);
+  await page.locator(".btn.toggle.auto").click();
+  await expect(page.locator(".btn.toggle.auto")).toHaveClass(/on/);
+  await expect(page.locator(".pill.auto")).toHaveText(/Auto/);
+  await page.locator(".composer textarea").focus();
+  await page.keyboard.type("What does this repo do?");
+  await page.keyboard.press("Meta+Enter");
+  const route = page.locator(".route").first();
+  await expect(route).toBeVisible();
+  await expect(route.locator(".route-label")).toContainText("Auto picked");
+  await expect(route.locator(".route-label")).toContainText("Mock · mock");
+  await expect(route.locator(".route-meta")).toContainText("quick answer · heuristic");
+  await expect(route.locator(".route-body")).toHaveCount(0);
+  await route.locator(".route-head").click();
+  await expect(route.locator(".route-body")).toContainText("No TypeSafe API key found; used the built-in heuristic.");
+  await expect(route.locator(".route-body")).toContainText("quick answer · complexity");
+  await page.screenshot({ path: path.join(appDir, "test-results", "e2e-auto-route.png") });
+  // The receipt sits between the user message and the agent's first reply.
+  await expect(page.locator(".transcript > *").nth(0)).toHaveClass(/msg user/);
+  await expect(page.locator(".transcript > *").nth(1)).toHaveClass(/route/);
+  // Stop the scripted run; the Auto pill and the receipt survive.
+  await page.keyboard.press("Meta+.");
+  await expect(page.locator(".pill.status")).toHaveText("Idle");
+  await expect(page.locator(".route")).toHaveCount(1);
+  await expect(page.locator(".pill.auto")).toHaveText(/Auto/);
+  // Settings explains why the heuristic judged, counts the auto turn, and exposes the policy knobs.
+  await page.locator(".sidebar button", { hasText: "Settings" }).click();
+  const status = page.locator("[data-testid=routing-status]");
+  await expect(status).toContainText("No TYPESAFE_API_KEY found");
+  await expect(status).toContainText("1 auto turn so far");
+  await expect(page.locator(".modal select").filter({ has: page.locator("option[value=economy]") })).toHaveValue("balanced");
+  await page.locator(".modal button", { hasText: "Cancel" }).click();
+  await expect(page.locator(".modal")).toHaveCount(0);
 });

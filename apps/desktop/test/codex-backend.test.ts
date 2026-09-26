@@ -139,3 +139,32 @@ test("CodexBackend: resume on a fresh server calls thread/resume; abort interrup
   assert.ok(seen.some((s) => s.method === "turn/interrupt"));
   await backend.dispose();
 });
+
+test("CodexBackend: service tiers come through model/list; a fast turn sets serviceTierForTurn", async () => {
+  const proc = new FakeProcess();
+  const seen: { method: string; params: Record<string, unknown> }[] = [];
+  proc.stdin.on("data", (d: Buffer) => {
+    for (const line of d.toString().split("\n")) {
+      if (!line.trim()) continue;
+      const msg = JSON.parse(line) as { id?: number; method?: string; params?: Record<string, unknown> };
+      if (msg.method) seen.push({ method: msg.method, params: msg.params ?? {} });
+      if (msg.method === "initialize") proc.emitLine({ id: msg.id, result: {} });
+      else if (msg.method === "model/list") proc.emitLine({ id: msg.id, result: { data: [{ id: "gpt-5.5", displayName: "GPT-5.5", hidden: false, isDefault: false, supportedReasoningEfforts: [{ reasoningEffort: "low" }], defaultReasoningEffort: "low", serviceTiers: [{ id: "default", name: "Standard" }, { id: "fast", name: "Fast" }], defaultServiceTier: "default" }] } });
+      else if (msg.method === "thread/start") proc.emitLine({ id: msg.id, result: { thread: { id: "thr-f" } } });
+      else if (msg.method === "turn/start") { proc.emitLine({ id: msg.id, result: { turn: { id: "turn-f" } } }); proc.emitLine({ method: "turn/completed", params: { threadId: "thr-f", turn: { id: "turn-f", status: "completed", error: null } } }); }
+    }
+  });
+  const backend = new CodexBackend("codex", fakeSpawn(proc).spawn);
+  const models = await backend.listModels();
+  assert.deepEqual(models[0]!.serviceTiers, ["default", "fast"]);
+  assert.equal(models[0]!.defaultServiceTier, "default");
+  const r = await backend.runTurn("go", { cwd: "/repo", mode: "agent", plan: false, model: "gpt-5.5", effort: "low", fast: true }, collectSink().sink, new AbortController().signal);
+  assert.equal(r.status, "completed");
+  const turn = seen.find((s) => s.method === "turn/start")!;
+  assert.equal(turn.params.serviceTierForTurn, "fast");
+  assert.equal(turn.params.effort, "low");
+  const r2 = await backend.runTurn("again", { cwd: "/repo", mode: "agent", plan: false, model: "gpt-5.5", resume: "thr-f" }, collectSink().sink, new AbortController().signal);
+  assert.equal(r2.status, "completed");
+  assert.equal(seen.filter((s) => s.method === "turn/start")[1]!.params.serviceTierForTurn, null, "a normal turn inherits the thread's tier");
+  await backend.dispose();
+});
