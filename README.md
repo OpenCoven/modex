@@ -1,6 +1,6 @@
 # Modex
 
-[![CI](https://github.com/OpenCoven/modex/actions/workflows/ci.yml/badge.svg)](https://github.com/OpenCoven/modex/actions/workflows/ci.yml)
+[![CI](https://github.com/TypeSafeAI/modex/actions/workflows/ci.yml/badge.svg)](https://github.com/TypeSafeAI/modex/actions/workflows/ci.yml)
 
 Modex is an open, Codex-App-style desktop app for running coding agents in your local
 repositories. It drives **Claude Code** and **Codex** through their own CLIs (`claude -p`
@@ -111,7 +111,7 @@ Every session works in its own worktree: `scripts/worktree.sh new <name>` create
 
 `main` is meant to accept only signed commits that passed the CI check. The ruleset lives at
 `.github/rulesets/main.json` (import it under *Settings → Rules → Rulesets → Import*, or
-`gh api -X POST repos/OpenCoven/modex/rulesets --input .github/rulesets/main.json`). GitHub
+`gh api -X POST repos/TypeSafeAI/modex/rulesets --input .github/rulesets/main.json`). GitHub
 only enforces rulesets on private repositories for paid org plans; on the Free plan the repo
 must be public for the rules to apply.
 
