@@ -8,6 +8,8 @@ interface Props {
   state: AppState;
   selected: string | null;
   onSelect: (threadId: string) => void;
+  /** The project an open draft belongs to; its row is highlighted like a selection. */
+  draftProjectId?: string;
   onAddProject: () => void;
   /** "New chat": a thread in the current project (the selected thread's, else the first). */
   onNewChat: () => void;
@@ -19,7 +21,7 @@ interface Props {
 /** Threads shown per project before "Show more". */
 export const THREADS_PER_PROJECT = 5;
 
-export function Sidebar({ state, selected, onSelect, onAddProject, onNewChat, onNewThread, onDeleteThread, onRemoveProject }: Props) {
+export function Sidebar({ state, selected, onSelect, draftProjectId, onAddProject, onNewChat, onNewThread, onDeleteThread, onRemoveProject }: Props) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [searching, setSearching] = useState(false);
@@ -81,15 +83,15 @@ export function Sidebar({ state, selected, onSelect, onAddProject, onNewChat, on
           const busy = all.some((t) => t.status === "running" || t.status === "waiting");
           return (
             <section key={p.id} className="project" data-testid="project" data-project-id={p.id}>
-              <div className="side-row project-row" title={p.path}>
+              <div className={`side-row project-row${p.id === draftProjectId ? " selected" : ""}`} title={p.path} data-draft={p.id === draftProjectId ? "true" : undefined}>
                 <button className="project-toggle" data-testid="project-toggle" aria-expanded={!isCollapsed} onClick={() => setCollapsed((c) => ({ ...c, [p.id]: !c[p.id] }))}>
                   <Icon name="folder" className="side-row-icon" />
                   <span className="side-row-label" data-testid="project-name">{p.name}</span>
                 </button>
                 {isCollapsed && busy && <span className="row-status running" title="A thread in this project is working" />}
                 <span className="row-actions">
-                  <IconButton icon="plus" label="New thread" shortcut="⌘N" reveal data-testid="project-new-thread" onClick={() => onNewThread(p.id)} />
-                  <IconButton icon="branch" label="New thread in a git worktree" shortcut="⇧⌘N" reveal data-testid="project-new-worktree-thread" onClick={() => onNewThread(p.id, true)} />
+                  <IconButton icon="plus" label="New chat" shortcut="⌘N" reveal data-testid="project-new-thread" onClick={() => onNewThread(p.id)} />
+                  <IconButton icon="branch" label="New chat in a git worktree" shortcut="⇧⌘N" reveal data-testid="project-new-worktree-thread" onClick={() => onNewThread(p.id, true)} />
                   <RowMenu label="Project actions" testId="project-menu">
                     <MenuItem data-testid="project-remove" className="danger" onClick={() => onRemoveProject(p.id)}>Remove project</MenuItem>
                   </RowMenu>

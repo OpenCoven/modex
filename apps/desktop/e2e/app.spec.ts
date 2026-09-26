@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { appDir, items, launch, seedHome, tid } from "./support";
+import { appDir, createThread, items, launch, seedHome, tid } from "./support";
 
 /**
  * Drives the real Electron window end to end with the keyboard, against the offline mock
@@ -25,26 +25,20 @@ test.afterAll(async () => {
 });
 
 test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI shows every step", async () => {
-  // Fresh home: one project, no threads → empty state.
-  await expect(tid(page, "empty-title")).toHaveText("What are we building?");
+  // Fresh home: one project, no threads → a draft on that project, not an empty page.
+  await expect(tid(page, "draft-title")).toHaveText(`What should we build in ${path.basename(repo)}?`);
   await expect(tid(page, "project-name")).toHaveText(path.basename(repo));
 
-  // ⌘N creates a thread in the (only) project and focuses the composer.
+  // ⌘N keeps a draft (no thread yet) and focuses the composer.
   await page.keyboard.press("Meta+n");
-  await expect(tid(page, "thread-view")).toBeVisible();
-  await expect(tid(page, "thread-row")).toHaveCount(1);
+  await expect(tid(page, "draft-view")).toBeVisible();
+  await expect(tid(page, "thread-row")).toHaveCount(0);
   await expect(tid(page, "composer-input")).toBeFocused();
   // Backend lives in the composer's + menu; the mock thread shows Mock checked there.
   await tid(page, "composer-plus").click();
   await expect(tid(page, "backend-picker").getByRole("menuitemradio", { checked: true })).toHaveText("Mock");
   await page.keyboard.press("Escape");
   await expect(tid(page, "composer-plus-menu")).toHaveCount(0);
-  // The header shows where the thread runs, with open/copy actions; a plain thread runs in the checkout itself.
-  await expect(tid(page, "location-path")).toHaveAttribute("title", repo);
-  await expect(tid(page, "location-branch")).toHaveCount(0);
-  await expect(tid(page, "action-open-folder")).toBeVisible();
-  await expect(tid(page, "action-open-terminal")).toBeVisible();
-  await expect(tid(page, "action-copy-path")).toBeVisible();
   // Model picker is list-only (Codex behaviour): no free-text field, and the CLI's default model is preselected.
   await expect(tid(page, "composer").locator("input")).toHaveCount(0);
   await expect(tid(page, "model-picker")).toHaveText(/Scripted mock/);
@@ -59,7 +53,16 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   const prompt = "Add a CONTRIBUTING.md with the three-step workflow";
   await page.keyboard.type(prompt);
   await page.keyboard.press("Meta+Enter");
+  // The first send turned the draft into exactly one thread.
+  await expect(tid(page, "thread-view")).toBeVisible();
+  await expect(tid(page, "thread-row")).toHaveCount(1);
   await expect(items(page, "user").locator('[data-testid="item-text"]')).toHaveText(prompt);
+  // The header shows where the thread runs, with open/copy actions; a plain thread runs in the checkout itself.
+  await expect(tid(page, "location-path")).toHaveAttribute("title", repo);
+  await expect(tid(page, "location-branch")).toHaveCount(0);
+  await expect(tid(page, "action-open-folder")).toBeVisible();
+  await expect(tid(page, "action-open-terminal")).toBeVisible();
+  await expect(tid(page, "action-copy-path")).toBeVisible();
   await expect(tid(page, "thread-title")).toHaveValue(prompt);
   await expect(tid(page, "composer-input")).toHaveValue("");
 
@@ -131,7 +134,7 @@ test("the transcript scrolls vertically inside its pane; the page itself never o
 });
 
 test("⇧⌘N creates a worktree thread and the header shows its branch and path", async () => {
-  await page.keyboard.press("Meta+Shift+n");
+  await createThread(page, "Check the worktree", { worktree: true });
   await expect(tid(page, "thread-row")).toHaveCount(2);
   const branch = tid(page, "location-branch");
   await expect(branch).toHaveText(/^modex\/\w+$/);
@@ -164,7 +167,7 @@ test("state survives a relaunch: the thread and its transcript are restored", as
 test("⚡ Auto: the judge picks a model before the turn and leaves an expandable receipt", async () => {
   // A fresh thread (default mode: chat). No TypeSafe key in this environment, so the built-in heuristic judges.
   await page.keyboard.press("Meta+n");
-  await expect(tid(page, "thread-row")).toHaveCount(3);
+  await expect(tid(page, "draft-view")).toBeVisible();
   await tid(page, "composer-plus").click();
   await expect(tid(page, "auto-toggle")).toHaveAttribute("aria-checked", "false");
   await expect(tid(page, "auto-indicator")).toHaveCount(0);
@@ -172,10 +175,12 @@ test("⚡ Auto: the judge picks a model before the turn and leaves an expandable
   await tid(page, "auto-toggle").click();
   await expect(tid(page, "composer-plus-menu")).toHaveCount(0);
   await expect(tid(page, "auto-chip")).toBeVisible();
-  await expect(tid(page, "auto-indicator")).toHaveText(/Auto/);
   await tid(page, "composer-input").focus();
   await page.keyboard.type("What does this repo do?");
   await page.keyboard.press("Meta+Enter");
+  // The draft's Auto choice is carried into the thread its send creates.
+  await expect(tid(page, "thread-row")).toHaveCount(3);
+  await expect(tid(page, "auto-indicator")).toHaveText(/Auto/);
   const route = items(page, "route").first();
   await expect(route).toBeVisible();
   await expect(tid(route, "route-label")).toContainText("Auto picked");
@@ -229,10 +234,13 @@ test("a key typed into Settings is kept encrypted outside state.json, reported m
 
 test("primitives: the model Menu is keyboard-driven, and icon buttons are named, revealed on focus, and tooltipped", async () => {
   await expect(tid(page, "settings")).toHaveCount(0);
-  // Its own thread, so the test also runs alone (-g).
+  // A fresh draft, so the test also runs alone (-g): its composer carries the same model picker.
+  await expect(tid(page, "sidebar")).toBeVisible();
+  // Park the pointer on empty space: a pointer resting on a control (the rail gear after Settings) keeps its tooltip up.
+  await page.mouse.move(900, 300);
   await page.keyboard.press("Meta+n");
+  await expect(tid(page, "draft-view")).toBeVisible();
   await expect(tid(page, "composer-input")).toBeFocused();
-  await expect(tid(page, "thread-status")).toHaveAttribute("data-status", "idle");
 
   // Menu: opening moves focus to the selected option; the trigger reports it is expanded.
   const picker = tid(page, "model-picker");
@@ -258,7 +266,7 @@ test("primitives: the model Menu is keyboard-driven, and icon buttons are named,
   // A press outside closes it; a press on the trigger toggles it rather than counting as outside.
   await picker.click();
   await expect(tid(page, "model-menu")).toBeVisible();
-  await tid(page, "transcript").click({ position: { x: 5, y: 5 } });
+  await tid(page, "draft-view").click({ position: { x: 5, y: 5 } });
   await expect(tid(page, "model-menu")).toHaveCount(0);
   await picker.click();
   await picker.click();
@@ -272,8 +280,8 @@ test("primitives: the model Menu is keyboard-driven, and icon buttons are named,
   // IconButton: an icon alone has no name, so every one carries an accessible label.
   const project = tid(page, "project").first();
   const newThread = tid(project, "project-new-thread");
-  await expect(newThread).toHaveAccessibleName("New thread");
-  await expect(tid(project, "project-new-worktree-thread")).toHaveAccessibleName("New thread in a git worktree");
+  await expect(newThread).toHaveAccessibleName("New chat");
+  await expect(tid(project, "project-new-worktree-thread")).toHaveAccessibleName("New chat in a git worktree");
   const more = tid(project, "project-menu");
   await expect(more).toHaveAccessibleName("Project actions");
   // Row actions are hidden until hover, but a keyboard user reaching one sees it, with its tooltip and shortcut.
@@ -283,7 +291,7 @@ test("primitives: the model Menu is keyboard-driven, and icon buttons are named,
   await page.keyboard.press("Tab"); // → ⋯
   await expect(more).toBeFocused();
   await expect(more).toHaveCSS("opacity", "1");
-  const tip = page.getByRole("tooltip");
+  const tip = page.getByRole("tooltip", { name: "Project actions" });
   await expect(tip).toHaveText("Project actions");
   await expect(more).toHaveAttribute("aria-describedby", (await tip.getAttribute("id"))!);
   // The ⋯ opens a Menu: focus lands on its item, Escape hands focus back.
@@ -294,13 +302,13 @@ test("primitives: the model Menu is keyboard-driven, and icon buttons are named,
   await expect(tid(project, "project-remove")).toHaveCount(0);
   await expect(more).toBeFocused();
   await page.keyboard.press("Shift+Tab");
-  await expect(page.getByRole("tooltip")).toHaveText(/New thread in a git worktree\s*⇧⌘N/);
+  await expect(page.getByRole("tooltip")).toHaveText(/New chat in a git worktree\s*⇧⌘N/);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("tooltip")).toHaveCount(0);
   // Hover opens it after the delay.
   await page.mouse.move(900, 500);
   await newThread.hover();
-  await expect(page.getByRole("tooltip")).toHaveText(/New thread\s*⌘N/);
+  await expect(page.getByRole("tooltip")).toHaveText(/New chat\s*⌘N/);
   await page.mouse.move(900, 500);
   await expect(page.getByRole("tooltip")).toHaveCount(0);
 });
@@ -310,20 +318,23 @@ test("shell: back/forward, rename, search, show more, row menus, and a sidebar t
   const current = page.locator('[data-testid="thread-row"][aria-current="true"]');
   const idOf = (l: typeof rows) => l.getAttribute("data-thread-id");
 
-  // New chat (sidebar row) and ⌘N both open a thread in the current project; each becomes current.
+  // New chat (sidebar row) opens a draft: nothing exists until its first send.
+  await expect(tid(page, "sidebar")).toBeVisible();
+  const before = await rows.count();
   await tid(page, "new-chat").click();
+  await expect(tid(page, "draft-view")).toBeVisible();
   await expect(tid(page, "composer-input")).toBeFocused();
-  const a = await idOf(current);
-  await page.keyboard.press("Meta+n");
-  await expect(current).not.toHaveAttribute("data-thread-id", a!);
-  const b = await idOf(current);
+  await expect(rows).toHaveCount(before);
+  const a = await createThread(page, "Shell thread A");
+  const b = await createThread(page, "Shell thread B");
+  await expect(current).toHaveAttribute("data-thread-id", b);
 
   // Back / forward walk the selection history.
   await tid(page, "nav-back").click();
-  await expect(current).toHaveAttribute("data-thread-id", a!);
+  await expect(current).toHaveAttribute("data-thread-id", a);
   await expect(tid(page, "nav-forward")).toBeEnabled();
   await tid(page, "nav-forward").click();
-  await expect(current).toHaveAttribute("data-thread-id", b!);
+  await expect(current).toHaveAttribute("data-thread-id", b);
   await expect(tid(page, "nav-forward")).toBeDisabled();
 
   // Rename from the titlebar: read-only until double-clicked; Escape cancels, Enter saves.
@@ -332,7 +343,7 @@ test("shell: back/forward, rename, search, show more, row menus, and a sidebar t
   await title.dblclick();
   await page.keyboard.type("Discarded name");
   await page.keyboard.press("Escape");
-  await expect(title).toHaveValue("New thread");
+  await expect(title).toHaveValue("Shell thread B");
   await title.dblclick();
   await page.keyboard.type("Shell rename check");
   await page.keyboard.press("Enter");
@@ -352,9 +363,8 @@ test("shell: back/forward, rename, search, show more, row menus, and a sidebar t
   await expect(rows).toHaveCount(total);
 
   // More than five threads in a project: five show, "Show more" expands, "Show less" folds back.
-  while ((await tid(page, "thread-row").count()) < 5 || (await tid(page, "show-more").count()) === 0) {
-    await page.keyboard.press("Meta+n");
-    await expect(tid(page, "composer-input")).toBeFocused();
+  for (let n = 1; (await tid(page, "thread-row").count()) < 5 || (await tid(page, "show-more").count()) === 0; n++) {
+    await createThread(page, `Filler ${n}`);
   }
   await expect(rows).toHaveCount(5);
   await tid(page, "show-more").click();
@@ -393,8 +403,8 @@ test("shell: back/forward, rename, search, show more, row menus, and a sidebar t
 
 test("composer: context strip, access menu, plan via + and its chip, send enabled only with text", async () => {
   await expect(tid(page, "sidebar")).toBeVisible(); // state loaded: shortcuts are live (the test also runs alone)
-  await page.keyboard.press("Meta+n");
-  await expect(tid(page, "composer-input")).toBeFocused();
+  await createThread(page, "Composer check");
+  await tid(page, "composer-input").focus();
 
   // Context strip: the project, where the thread runs, and the checkout's branch.
   await expect(tid(page, "context-project")).toHaveText(path.basename(repo));
@@ -404,6 +414,7 @@ test("composer: context strip, access menu, plan via + and its chip, send enable
   await expect(tid(page, "composer-context")).toHaveAttribute("title", repo);
 
   // Send is disabled until there is text.
+  await expect(tid(page, "composer-input")).toHaveValue("");
   await expect(tid(page, "send")).toBeDisabled();
   await page.keyboard.type("hello");
   await expect(tid(page, "send")).toBeEnabled();
@@ -443,4 +454,74 @@ test("composer: context strip, access menu, plan via + and its chip, send enable
   await tid(page, "plan-chip").click();
   await expect(tid(page, "plan-chip")).toHaveCount(0);
   await expect(tid(page, "plan-indicator")).toHaveCount(0);
+});
+
+test("drafts: a new chat is nothing until its first send; leaving it creates no thread; ⇧⌘N drafts a worktree", async () => {
+  await expect(tid(page, "sidebar")).toBeVisible();
+  const rows = tid(page, "thread-row");
+  await createThread(page, "A thread to leave the draft for"); // so the test also runs alone
+  // Count threads in the persisted store, not visible rows: "Show more" caps rows at five per project.
+  const stored = () => (JSON.parse(fs.readFileSync(path.join(home, "app", "state.json"), "utf8")) as { threads: unknown[] }).threads.length;
+  const existing = stored();
+  const projectRow = page.locator('[data-testid="project"]').first().locator('[data-draft="true"]');
+
+  // ⌘N: a draft on the current project, highlighted in the sidebar, with no thread row and no thread chrome.
+  await page.keyboard.press("Meta+n");
+  await expect(tid(page, "draft-view")).toBeVisible();
+  await expect(tid(page, "draft-title")).toHaveText(`What should we build in ${path.basename(repo)}?`);
+  await expect(projectRow).toHaveCount(1);
+  await expect(page.locator('[data-testid="thread-row"][aria-current="true"]')).toHaveCount(0);
+  await expect(tid(page, "thread-title")).toHaveCount(0);
+  await expect(tid(page, "changes-panel")).toHaveCount(0);
+
+  // Settings chosen in the draft are its own; typing and leaving creates nothing.
+  await tid(page, "access-picker").click();
+  await page.locator('[data-testid="access-option"][data-mode="agent"]').click();
+  await expect(tid(page, "access-picker")).toHaveAttribute("data-mode", "agent");
+  await page.keyboard.press("Meta+Shift+p");
+  await expect(tid(page, "plan-chip")).toBeVisible();
+  await tid(page, "composer-input").fill("never sent");
+  await rows.first().click();
+  await expect(tid(page, "draft-view")).toHaveCount(0);
+  await expect(tid(page, "thread-view")).toBeVisible();
+  expect(stored()).toBe(existing);
+
+  // ⇧⌘N drafts a worktree; the strip's Local/Worktree item toggles it back and forth before anything exists.
+  await page.keyboard.press("Meta+Shift+n");
+  const kind = tid(page, "context-kind");
+  await expect(kind).toHaveAttribute("data-kind", "worktree");
+  await expect(kind).toHaveAttribute("aria-pressed", "true");
+  await expect(tid(page, "context-branch")).toHaveCount(0);
+  await kind.click();
+  await expect(kind).toHaveAttribute("data-kind", "local");
+  await kind.click();
+  await expect(kind).toHaveAttribute("data-kind", "worktree");
+  expect(stored()).toBe(existing);
+  // A fresh draft starts from the defaults, not from the abandoned one.
+  await expect(tid(page, "access-picker")).toHaveAttribute("data-mode", "chat");
+  await expect(tid(page, "plan-chip")).toHaveCount(0);
+
+  // The project name in the heading is a picker (one project here: it lists it, checked).
+  await tid(page, "draft-project").click();
+  await expect(tid(page, "draft-project-option")).toHaveCount(1);
+  await expect(tid(page, "draft-project-option")).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Escape");
+
+  // First send: exactly one thread, created as a worktree, with the draft's settings, and it is selected.
+  await tid(page, "access-picker").click();
+  await page.locator('[data-testid="access-option"][data-mode="agent"]').click();
+  await tid(page, "composer-input").focus();
+  await page.keyboard.type("Draft becomes a thread");
+  await page.keyboard.press("Meta+Enter");
+  await expect(tid(page, "thread-view")).toBeVisible({ timeout: 15_000 });
+  await expect(tid(page, "draft-view")).toHaveCount(0);
+  await expect.poll(stored).toBe(existing + 1);
+  const current = page.locator('[data-testid="thread-row"][aria-current="true"]');
+  await expect(tid(current, "thread-row-title")).toHaveText("Draft becomes a thread");
+  await expect(tid(current, "thread-row-worktree")).toHaveCount(1);
+  await expect(tid(page, "location-kind")).toHaveAttribute("data-kind", "worktree");
+  await expect(tid(page, "access-picker")).toHaveAttribute("data-mode", "agent");
+  await expect(items(page, "user").first()).toHaveText("Draft becomes a thread");
+  await page.keyboard.press("Meta+.");
+  await expect(tid(page, "thread-status")).toHaveAttribute("data-status", "idle");
 });

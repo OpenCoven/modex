@@ -56,12 +56,12 @@ test("captures every named chat state at the reference size", async () => {
   console.log(`[ui:capture] viewport ${vp.width}×${vp.height} (reference ${REFERENCE.width}×${REFERENCE.height})`);
   expect(vp, "capture viewport must match the reference; the window was clamped to the display").toEqual(REFERENCE);
 
-  await expect(tid(page, "empty-state")).toBeVisible();
-  await capture("01-empty");
+  await expect(tid(page, "draft-view")).toBeVisible();
+  await capture("01-draft");
 
   await page.keyboard.press("Meta+n");
   await expect(tid(page, "composer-input")).toBeFocused();
-  await capture("02-new-thread");
+  await capture("02-draft-focused");
 
   await page.keyboard.type("Add a CONTRIBUTING.md with the three-step workflow");
   await capture("03-composer-typed");
@@ -88,7 +88,7 @@ test("captures every named chat state at the reference size", async () => {
   await expect(tid(page, "changes-panel")).toHaveCount(0);
   await capture("08-changes-hidden");
 
-  expect(manifest.map((m) => m.state)).toEqual(["01-empty", "02-new-thread", "03-composer-typed", "04-approval", "05-turn-complete", "06-items-expanded", "07-model-menu", "08-changes-hidden"]);
+  expect(manifest.map((m) => m.state)).toEqual(["01-draft", "02-draft-focused", "03-composer-typed", "04-approval", "05-turn-complete", "06-items-expanded", "07-model-menu", "08-changes-hidden"]);
 });
 
 // ── Parity targets. Flip each block on in the phase that implements it. ──────────────────────
@@ -209,5 +209,23 @@ test.describe("Phase 4 · composer", () => {
     expect(await css(tid(page, "send"), "border-top-left-radius")).toBe("50%");
     expect(await css(tid(page, "composer-input"), "font-size")).toBe("14px");
     await expect(tid(page, "composer-input")).toHaveAttribute("placeholder", "Do anything");
+  });
+});
+
+test.describe("Phase 5 · draft", () => {
+  // Reference #1: "What should we build in coven-threads?" at 28/400, ink y 481–505, centred in the main pane.
+  test("draft heading is 28 px regular text-1, centred in the main pane at the reference height", async () => {
+    await page.keyboard.press("Meta+n");
+    await expect(tid(page, "draft-view")).toBeVisible();
+    const h = tid(page, "draft-title");
+    expect(await css(h, "font-size")).toBe("28px");
+    expect(await css(h, "font-weight")).toBe("400");
+    expect(await css(h, "color")).toBe("rgb(227, 228, 230)");
+    expect(await css(tid(page, "draft-project"), "text-decoration-style")).toBe("dotted");
+    const b = await box(h);
+    const m = await box(tid(page, "main"));
+    expect(Math.abs(b.x + b.width / 2 - (m.x + 1 + (m.width - 1) / 2))).toBeLessThanOrEqual(2);
+    // Reference ink centre y 493; with a 34 px line box the box centre sits 4 px above the ink centre.
+    expect(Math.abs(b.y + b.height / 2 - 489)).toBeLessThanOrEqual(2);
   });
 });

@@ -6,6 +6,7 @@ import { ThreadView } from "./components/ThreadView";
 import { ChangesPanel } from "./components/ChangesPanel";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { EmptyState } from "./components/EmptyState";
+import { DraftView, type Draft } from "./components/DraftView";
 import { TitleBar } from "./components/TitleBar";
 import { Rail } from "./components/Rail";
 import { useSelectionHistory } from "./history";
@@ -23,6 +24,12 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  // A new chat is a draft (renderer-only) until its first send creates the thread.
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [creating, setCreating] = useState(false);
+  // A thread just created from a draft has no history to load, and reloading it could overwrite
+  // the first streamed items; the selection effect skips its one load.
+  const justCreated = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     const s = await bridge.invoke("state:get", undefined);
@@ -60,20 +67,59 @@ export function App() {
   // Selecting a thread loads its items and its working-tree state.
   useEffect(() => {
     if (!selected) return;
-    void bridge.invoke("thread:items", { threadId: selected }).then((list) => setItems((m) => ({ ...m, [selected]: list })));
+    if (justCreated.current === selected) {
+      justCreated.current = null;
+      setItems((m) => ({ ...m, [selected]: m[selected] ?? [] }));
+    } else {
+      void bridge.invoke("thread:items", { threadId: selected }).then((list) => setItems((m) => ({ ...m, [selected]: list })));
+    }
     void loadChanges(selected);
   }, [selected, loadChanges]);
 
   const thread = useMemo(() => state?.threads.find((t) => t.id === selected) ?? null, [state, selected]);
-  const history = useSelectionHistory(selected, setSelected, (id) => Boolean(state?.threads.some((t) => t.id === id)));
+  /** Choosing a thread (sidebar, history) discards any draft: an unsent draft never becomes a thread. */
+  const selectThread = useCallback((id: string) => {
+    setDraft(null);
+    setSelected(id);
+  }, []);
+  const history = useSelectionHistory(selected, selectThread, (id) => Boolean(state?.threads.some((t) => t.id === id)));
+  const draftDefaults = (s: AppState): Draft["settings"] => ({
+    backend: s.settings.default_backend,
+    mode: s.settings.default_mode,
+    plan: false,
+    auto: s.settings.routing.auto_by_default,
+    model: s.settings.default_model[s.settings.default_backend] ?? "",
+  });
+  const openDraft = (projectId: string, worktree = false) => {
+    if (!state) return;
+    setSelected(null);
+    setDraft({ projectId, worktree, settings: draftDefaults(state) });
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+  // Nothing selected and no draft, but there are projects (first launch, last thread deleted): open a draft.
+  useEffect(() => {
+    if (!state || selected || creating) return;
+    if (draft && !state.projects.some((p) => p.id === draft.projectId)) setDraft(null);
+    else if (!draft && state.projects[0]) setDraft({ projectId: state.projects[0].id, worktree: false, settings: draftDefaults(state) });
+  }, [state, selected, draft, creating]);
   useEffect(() => localStorage.setItem(SIDEBAR_KEY, sidebarOpen ? "open" : "closed"), [sidebarOpen]);
 
   // Model catalogue per backend, fetched lazily from the CLIs (Codex: live `model/list`).
   useEffect(() => {
-    const b = thread?.backend;
+    const b = thread?.backend ?? draft?.settings.backend;
     if (!b || models[b]) return;
     void bridge.invoke("models:list", { backend: b }).then((r) => setModels((m) => ({ ...m, [b]: r }))).catch((err) => setModels((m) => ({ ...m, [b]: { models: [], error: (err as Error).message } })));
-  }, [thread?.backend]);
+  }, [thread?.backend, draft?.settings.backend]);
+
+  // A draft, like a thread, always shows a model the CLI knows: the settings default or the CLI's own.
+  useEffect(() => {
+    if (!draft || !state) return;
+    const list = models[draft.settings.backend]?.models;
+    if (!list?.length || list.some((m) => m.id === draft.settings.model)) return;
+    const preferred = state.settings.default_model[draft.settings.backend];
+    const pick = list.find((m) => m.id === preferred) ?? list.find((m) => m.isDefault) ?? list[0]!;
+    setDraft({ ...draft, settings: { ...draft.settings, model: pick.id, effort: pick.defaultEffort } });
+  }, [draft?.settings.backend, draft?.settings.model, models]);
 
   // Like the Codex App, a thread always has a concrete model the CLI knows: pick the CLI's
   // default (or the settings default) when the thread has none or names one the CLI no longer lists.
@@ -106,10 +152,23 @@ export function App() {
     const p = await bridge.invoke("project:add", undefined);
     if (p) await refresh();
   });
-  const newThread = (projectId: string, worktree = false) => act(async () => {
-    const t = await bridge.invoke("thread:create", { projectId, worktree });
-    await refresh();
-    setSelected(t.id);
+  /** First send from a draft: create the thread with the draft's settings, then send. */
+  const sendDraft = (text: string) => draft && act(async () => {
+    const d = draft;
+    setCreating(true);
+    try {
+      const s = d.settings;
+      const t = await bridge.invoke("thread:create", { projectId: d.projectId, worktree: d.worktree, backend: s.backend, mode: s.mode, model: s.model || undefined, auto: s.auto });
+      if (s.plan || s.effort) await bridge.invoke("thread:update", { threadId: t.id, patch: { ...(s.plan ? { plan: true } : {}), ...(s.effort ? { effort: s.effort } : {}) } });
+      await refresh();
+      justCreated.current = t.id;
+      setDraft(null);
+      setSelected(t.id);
+      const r = await bridge.invoke("thread:send", { threadId: t.id, text });
+      if (!r.ok) setError(r.error ?? "send failed");
+    } finally {
+      setCreating(false);
+    }
   });
   const send = (text: string) => thread && act(async () => {
     const r = await bridge.invoke("thread:send", { threadId: thread.id, text });
@@ -150,27 +209,28 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
       if (!meta) return;
-      const pid = thread?.projectId ?? state?.projects[0]?.id;
+      const pid = thread?.projectId ?? draft?.projectId ?? state?.projects[0]?.id;
       if (e.key.toLowerCase() === "n" && pid) {
         e.preventDefault();
-        void newThread(pid, e.shiftKey);
-      } else if (e.key.toLowerCase() === "p" && e.shiftKey && thread) {
+        openDraft(pid, e.shiftKey);
+      } else if (e.key.toLowerCase() === "p" && e.shiftKey && (thread || draft)) {
         e.preventDefault();
-        void updateThread({ plan: !thread.plan });
+        if (thread) void updateThread({ plan: !thread.plan });
+        else if (draft) setDraft({ ...draft, settings: { ...draft.settings, plan: !draft.settings.plan } });
       } else if (e.key === "." && thread) {
         e.preventDefault();
         void stop();
       } else if (e.key.toLowerCase() === "j") {
         e.preventDefault();
         setShowChanges((v) => !v);
-      } else if (e.key === "Enter" && thread && document.activeElement !== inputRef.current) {
+      } else if (e.key === "Enter" && (thread || draft) && document.activeElement !== inputRef.current) {
         e.preventDefault();
         inputRef.current?.focus();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [thread, state]);
+  }, [thread, state, draft]);
 
   // Focus the composer whenever the selected thread changes.
   useEffect(() => {
@@ -180,8 +240,8 @@ export function App() {
   if (!state) return <div className="app loading">Loading…</div>;
 
   const newChat = () => {
-    const pid = thread?.projectId ?? state.projects[0]?.id;
-    if (pid) void newThread(pid);
+    const pid = thread?.projectId ?? draft?.projectId ?? state.projects[0]?.id;
+    if (pid) openDraft(pid);
   };
 
   return (
@@ -205,10 +265,11 @@ export function App() {
           <Sidebar
             state={state}
             selected={selected}
-            onSelect={setSelected}
+            onSelect={selectThread}
+            draftProjectId={draft?.projectId}
             onAddProject={addProject}
             onNewChat={newChat}
-            onNewThread={newThread}
+            onNewThread={openDraft}
             onDeleteThread={deleteThread}
             onRemoveProject={removeProject}
           />
@@ -231,9 +292,21 @@ export function App() {
               platform={bridge.platform}
               branch={changes?.branch ?? undefined}
             />
-          ) : (
-            <EmptyState hasProjects={state.projects.length > 0} onAddProject={addProject} onNewThread={newChat} />
-          )}
+          ) : draft ? (
+            <DraftView
+              key={`${draft.projectId}`}
+              draft={draft}
+              projects={state.projects}
+              creating={creating}
+              models={models[draft.settings.backend]?.models ?? []}
+              modelsError={models[draft.settings.backend]?.error}
+              onChange={setDraft}
+              onSend={sendDraft}
+              inputRef={inputRef}
+            />
+          ) : state.projects.length === 0 ? (
+            <EmptyState onAddProject={addProject} />
+          ) : null}
           {error && (
             <div className="toast" role="alert">
               <span>{error}</span>
