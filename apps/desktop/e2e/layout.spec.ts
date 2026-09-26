@@ -212,6 +212,37 @@ test.describe("Phase 4 · composer", () => {
   });
 });
 
+test.describe("Phase 6 · transcript", () => {
+  // Reference #8: column = composer box − 22 px; 14 px / 1.6 prose; muted "Working for" over a #1f1f21 rule;
+  // #1a1a1c bubble with 12 px corners, right-aligned; "Thinking" at #616163.
+  test("column, bubble, turn header and prose match the reference", async () => {
+    const c = await box(tid(page, "composer-box"));
+    const header = await box(tid(page, "turn-label").first());
+    expect(Math.abs(header.x - (c.x + 11))).toBeLessThanOrEqual(1);
+    expect(Math.abs(header.width - (c.width - 22))).toBeLessThanOrEqual(1);
+    const label = tid(page, "turn-label").first();
+    expect(await css(label, "font-size")).toBe("14px");
+    expect(await css(label, "font-weight")).toBe("500");
+    expect(await css(label, "color")).toBe("rgb(117, 117, 119)"); // --text-3
+    expect(await css(label, "border-bottom-color")).toBe("rgb(31, 31, 33)"); // --rule #1f1f21
+    const bubble = items(page, "user").first().locator('[data-testid="item-text"]');
+    expect(await css(bubble, "background-color")).toBe("rgb(26, 26, 28)"); // #1a1a1c
+    expect(await css(bubble, "border-top-left-radius")).toBe("12px");
+    const b = await box(bubble);
+    expect(Math.abs(b.x + b.width - (header.x + header.width))).toBeLessThanOrEqual(1);
+    const prose = items(page, "assistant").first();
+    expect(await css(prose, "font-size")).toBe("14px");
+    expect(await css(prose, "line-height")).toBe("22.4px");
+    expect(await css(prose, "color")).toBe("rgb(227, 228, 230)");
+    // Resting state: an expanded or hovered line is brighter (--text-2) on purpose.
+    const thinking = items(page, "thinking").first().locator('[data-testid="item-toggle"]');
+    if ((await thinking.getAttribute("aria-expanded")) === "true") await thinking.click();
+    await page.mouse.move(5, 600);
+    await expect(thinking).toHaveAttribute("aria-expanded", "false");
+    await expect(thinking).toHaveCSS("color", "rgb(97, 97, 99)"); // --text-muted #616163
+  });
+});
+
 test.describe("Phase 5 · draft", () => {
   // Reference #1: "What should we build in coven-threads?" at 28/400, ink y 481–505, centred in the main pane.
   test("draft heading is 28 px regular text-1, centred in the main pane at the reference height", async () => {

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { BackendId, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch } from "../../shared/types";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
+import { Icon } from "./ui/Icon";
 
 interface Props {
   thread: Thread;
@@ -42,11 +43,41 @@ export function tailPath(p: string, max = 40): string {
 export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, onUpdate, models, modelsError, inputRef, onOpenPath, onOpenTerminal, platform, branch }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const busy = thread.status === "running" || thread.status === "waiting";
-
+  // Follow new output only while the reader is at (or near) the bottom; scrolling up to read stops it.
+  const stick = useRef(true);
+  const onScroll = () => {
+    const el = scroller.current;
+    if (el) stick.current = isNearBottom(el);
+  };
+  useEffect(() => {
+    stick.current = true;
+  }, [thread.id]);
+  // Output also grows without new items (streamed text, a pane opening and re-wrapping the prose):
+  // keep following those while stuck to the bottom.
   useEffect(() => {
     const el = scroller.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [items.length, items.at(-1)]);
+    if (!el) return;
+    const follow = () => {
+      if (stick.current) el.scrollTop = el.scrollHeight;
+    };
+    const resize = new ResizeObserver(follow);
+    resize.observe(el);
+    const mutate = new MutationObserver(follow);
+    mutate.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => {
+      resize.disconnect();
+      mutate.disconnect();
+    };
+  }, []);
+  useEffect(() => {
+    const el = scroller.current;
+    // The reader's own new message always brings the view down.
+    if (items.at(-1)?.kind === "user") stick.current = true;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [thread.id, items.length, items.at(-1)]);
+  const turns = groupTurns(items);
+  let lastUser = -1;
+  turns.forEach((t, i) => { if (t.user) lastUser = i; });
 
   return (
     <section className="thread-view" data-testid="thread-view" data-thread-id={thread.id}>
@@ -64,14 +95,19 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
         <button className="btn small ghost" data-testid="action-copy-path" onClick={() => void navigator.clipboard.writeText(thread.cwd)} title="Copy the full path">Copy path</button>
       </div>
 
-      <div className="transcript" ref={scroller} data-testid="transcript">
+      <div className="transcript" ref={scroller} data-testid="transcript" onScroll={onScroll}>
         {items.length === 0 && (
           <div className="transcript-empty">
             <p>Describe a task. Modex will inspect <code>{thread.cwd}</code>, then read, edit, and run what it needs — asking first when the mode requires it.</p>
           </div>
         )}
-        {items.map((item) => <Item key={item.id} item={item} onAnswer={onAnswer} />)}
-        {thread.status === "running" && <div className="working" data-testid="working"><span className="spinner" /> Working…</div>}
+        {turns.map((turn, i) => (
+          <Fragment key={turn.user?.id ?? `pre-${i}`}>
+            {turn.user && <Item item={turn.user} onAnswer={onAnswer} />}
+            {turn.user && (i === lastUser && busy ? <TurnHeader start={turn.user.at} status={thread.status} /> : turn.rest.length > 0 && <TurnHeader start={turn.user.at} end={turnEnd(turn.rest)} />)}
+            {turn.rest.map((item) => <Item key={item.id} item={item} onAnswer={onAnswer} />)}
+          </Fragment>
+        ))}
       </div>
 
       <Composer
@@ -96,6 +132,57 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
         inputRef={inputRef}
       />
     </section>
+  );
+}
+
+/** Within this many px of the bottom counts as "at the bottom" for auto-scroll. */
+const STICK_PX = 80;
+export function isNearBottom(el: { scrollTop: number; scrollHeight: number; clientHeight: number }): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_PX;
+}
+
+interface Turn {
+  user?: Extract<ThreadItem, { kind: "user" }>;
+  rest: ThreadItem[];
+}
+/** Splits the transcript at each user message: one turn = a message and everything the agent did for it. */
+function groupTurns(items: ThreadItem[]): Turn[] {
+  const turns: Turn[] = [];
+  for (const item of items) {
+    if (item.kind === "user") turns.push({ user: item, rest: [] });
+    else if (turns.length) turns.at(-1)!.rest.push(item);
+    else turns.push({ rest: [item] });
+  }
+  return turns;
+}
+/** When a finished turn ended: its last item's time, plus that item's own duration when it has one. */
+function turnEnd(rest: ThreadItem[]): number {
+  return Math.max(...rest.map((i) => Date.parse(i.at) + ("durationMs" in i && typeof i.durationMs === "number" ? i.durationMs : 0)));
+}
+/** 7s · 1m 36s · 1h 4m */
+export function formatElapsed(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+/** "Working for 7s" (live, ticking) or "Worked for 1m 36s" above a rule, between a message and the agent's work. */
+function TurnHeader({ start, end, status }: { start: string; end?: number; status?: Thread["status"] }) {
+  const live = end === undefined;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!live) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [live]);
+  const elapsed = formatElapsed((live ? now : end) - Date.parse(start));
+  const label = !live ? `Worked for ${elapsed}` : status === "waiting" ? `Waiting for approval · ${elapsed}` : `Working for ${elapsed}`;
+  return (
+    <div className={`turn-header${live ? " live" : ""}`} data-testid="turn-header" data-live={live ? "true" : "false"}>
+      <span className="turn-label" data-testid="turn-label">{label}</span>
+    </div>
   );
 }
 
@@ -148,7 +235,7 @@ function RouteItem({ item }: { item: Extract<ThreadItem, { kind: "route" }> }) {
           {item.pinned ? "Auto kept" : "Auto picked"} <b>{backend} · {item.model}</b>{extras ? ` · ${extras}` : ""}
         </span>
         <span className="route-meta" data-testid="route-meta">{item.task.replace(/_/g, " ")} · {item.source === "jev" ? `Jev ${item.confidence.toFixed(2)}` : "heuristic"}</span>
-        <span className="chev">{open ? "▾" : "▸"}</span>
+        <Icon name="chevron-right" size={12} className={`chev${open ? " open" : ""}`} />
       </button>
       {open && (
         <ul className="route-body" data-testid="item-body">
@@ -168,10 +255,9 @@ function ThinkingItem({ item }: { item: Extract<ThreadItem, { kind: "thinking" }
   return (
     <div className={`thinking ${item.status} ${isOpen ? "open" : ""}`} data-testid="item" data-item-kind="thinking" data-status={item.status}>
       <button className="thinking-head" data-testid="item-toggle" onClick={() => setOpen(!isOpen)} aria-expanded={isOpen}>
-        <span className="thinking-icon">{item.status === "running" ? <span className="spinner" /> : "◌"}</span>
         <span className={`thinking-label ${item.status === "running" ? "shimmer" : ""}`} data-testid="thinking-label">{item.status === "running" ? "Thinking…" : secs ? `Thought for ${secs}s` : "Thinking"}</span>
         <span className="spacer" />
-        <span className="chev">{isOpen ? "▾" : "▸"}</span>
+        <Icon name="chevron-right" size={12} className={`chev${isOpen ? " open" : ""}`} />
       </button>
       {isOpen && (item.text.trim() ? <div className="thinking-body" data-testid="item-body"><Markdown text={item.text} /></div> : <div className="thinking-body dim" data-testid="item-body">{item.status === "running" ? "…" : "The CLI did not share the reasoning text for this step."}</div>)}
     </div>
@@ -188,7 +274,7 @@ function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
         <code className="tool-title" data-testid="tool-title">{item.title}</code>
         <span className="spacer" />
         {item.status === "running" ? <span className="spinner" /> : <span className="tool-meta">{item.ok === false ? "failed" : "done"}{item.durationMs != null ? ` · ${(item.durationMs / 1000).toFixed(1)}s` : ""}</span>}
-        <span className="chev">{open ? "▾" : "▸"}</span>
+        <Icon name="chevron-right" size={12} className={`chev${open ? " open" : ""}`} />
       </button>
       {open && (
         <div className="tool-body" data-testid="item-body">

@@ -81,6 +81,10 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   await expect(card).toBeVisible();
   await expect(tid(card, "approval-question")).toContainText("Allow add CONTRIBUTING.md?");
   await expect(tid(page, "thread-status")).toHaveText("Needs approval");
+  // One turn header under the message: live while the turn is open, and it says what it is waiting for.
+  await expect(tid(page, "turn-header")).toHaveCount(1);
+  await expect(tid(page, "turn-header")).toHaveAttribute("data-live", "true");
+  await expect(tid(page, "turn-label")).toHaveText(/^Waiting for approval · \d+s$/);
   // While a turn is in flight the composer offers Stop, not Send, and the access pill is locked.
   await expect(tid(page, "stop")).toBeVisible();
   await expect(tid(page, "send")).toHaveCount(0);
@@ -91,6 +95,8 @@ test("⌘N → type → ⌘⏎ → approve: the agent edits the repo and the UI 
   // Approve → the patch lands, the turn completes, the sidebar dot goes idle.
   await card.getByRole("button", { name: "Approve" }).click();
   await expect(tid(card, "approval-answer")).toHaveText("Approved");
+  await expect(tid(page, "turn-label")).toHaveText(/^Worked for \d+s$/);
+  await expect(tid(page, "turn-header")).toHaveAttribute("data-live", "false");
   await expect(items(page, "assistant").last()).toContainText("added CONTRIBUTING.md");
   await expect(tid(page, "thread-status")).toHaveText("Idle");
   expect(fs.readFileSync(path.join(repo, "CONTRIBUTING.md"), "utf8")).toContain("# Contributing to Modex");
@@ -524,4 +530,37 @@ test("drafts: a new chat is nothing until its first send; leaving it creates no 
   await expect(items(page, "user").first()).toHaveText("Draft becomes a thread");
   await page.keyboard.press("Meta+.");
   await expect(tid(page, "thread-status")).toHaveAttribute("data-status", "idle");
+});
+
+test("transcript: follows new output while the reader is at the bottom, and stays put once they scroll up", async () => {
+  await expect(tid(page, "sidebar")).toBeVisible();
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1100, 560));
+  await page.keyboard.press("Meta+n");
+  await expect(tid(page, "draft-view")).toBeVisible();
+  await tid(page, "composer-input").fill("Add a CONTRIBUTING.md with the three-step workflow");
+  await page.keyboard.press("Meta+Enter");
+  const transcript = tid(page, "transcript");
+  const gap = () => transcript.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  // The scripted turn pauses on its approval; the view has followed the output down to the card.
+  const card = items(page, "approval").first();
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => transcript.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(100);
+  expect(await gap()).toBeLessThanOrEqual(80);
+  // Scroll up to read, then answer with a DOM click (a Playwright click would scroll the card into view).
+  await transcript.evaluate((el) => el.scrollTo({ top: 0 }));
+  await card.getByRole("button", { name: "Deny" }).evaluate((b) => (b as HTMLButtonElement).click());
+  await expect(tid(card, "approval-answer")).toHaveText("Denied");
+  await expect(items(page, "assistant").last()).toContainText("Done", { timeout: 15_000 });
+  await expect(tid(page, "thread-status")).toHaveAttribute("data-status", "idle");
+  // New output arrived below, and the reader was left where they were.
+  expect(await transcript.evaluate((el) => el.scrollTop)).toBeLessThan(5);
+  expect(await gap()).toBeGreaterThan(80);
+  // Their own next message brings the view back down.
+  await tid(page, "composer-input").fill("Thanks");
+  await page.keyboard.press("Meta+Enter");
+  await expect(items(page, "user").last()).toHaveText("Thanks");
+  await expect.poll(gap).toBeLessThanOrEqual(80);
+  await page.keyboard.press("Meta+.");
+  await expect(tid(page, "thread-status")).toHaveAttribute("data-status", "idle");
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1380, 880));
 });

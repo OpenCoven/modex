@@ -32,6 +32,7 @@
   --text-3: #757577;             /* measured: "Show more"; model effort ≈ #7f8082 */
   --text-4: #5c5c5f;             /* measured: section labels ("Projects") */
   --text-placeholder: #535455;   /* measured: "Do anything" */
+  --text-muted: #616163;         /* measured: "Thinking" line, reference #8 (320–374 × 396–409) */
 
   /* Accents. Modex keeps its own blue for focus and progress; Codex's UI is otherwise monochrome. */
   --accent: #7c9cff;
