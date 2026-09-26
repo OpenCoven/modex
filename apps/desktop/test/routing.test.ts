@@ -278,7 +278,7 @@ test("router: Jev failing or absent falls back to the heuristic and says so in t
   const o = await offline.route({ thread: thread(), text: "why is this slow?", items: [], project: { name: "demo" } });
   assert.match(o.item.reasons[0]!, /No TypeSafe API key/);
   assert.equal((await offline.status()).live, false);
-  assert.match((await offline.status()).detail!, /No TYPESAFE_API_KEY found/);
+  assert.match((await offline.status()).detail!, /No TypeSafe API key found/);
   // an aborted turn (user pressed Stop while judging) propagates the signal to the transport
   const ac = new AbortController();
   const aborting = new Router({ home, policy: () => DEFAULT_ROUTING, listModels, transport: async (_req, signal) => { ac.abort(); assert.equal(signal?.aborted, true); throw new JevError("timed out", "timeout"); } });
@@ -306,3 +306,127 @@ test("jev client: key resolution never hits the login shell when disabled; the H
   const slow = httpTransport("k", { timeoutMs: 5, fetchImpl: ((_u: string, init: RequestInit) => new Promise((_r, reject) => init.signal!.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }))))) as unknown as typeof fetch });
   await assert.rejects(slow({ state: "s", model: "jev-latest", questions: {} }), (e: JevError) => e.code === "timeout");
 });
+
+// ---------------------------------------------------------------- key chain, CLI transport, secrets
+
+test("key chain: Modex keychain beats env beats jev config beats login shell; op:// refs expand in memory", async () => {
+  const { resolveTypesafeKey, isSecretRef, readJevConfigKey, jevConfigPath } = await import("../src/main/engine/routing/jev.js");
+  const cfgDir = tmpdir("jev-cfg-");
+  const cfg = path.join(cfgDir, "config.json");
+  fs.writeFileSync(cfg, JSON.stringify({ apiKey: "sk-from-jev-config" }));
+  const refs: string[] = [];
+  const readRef = async (ref: string) => { refs.push(ref); if (ref.includes("locked")) throw new Error("1Password is locked; unlock it and retry."); return `resolved-${ref.split("/").pop()}`; };
+  const base = { env: { MODEX_NO_LOGIN_PATH: "1" } as NodeJS.ProcessEnv, jevConfigPath: cfg, readRef, loginShell: async () => null };
+  assert.deepEqual(await resolveTypesafeKey({ ...base, stored: () => "sk-modex" }), { key: "sk-modex", source: "modex" });
+  assert.deepEqual(await resolveTypesafeKey({ ...base, env: { TYPESAFE_API_KEY: "sk-env" } }), { key: "sk-env", source: "env" });
+  assert.deepEqual(await resolveTypesafeKey({ ...base, env: { JEV_API_KEY: "sk-alt" } }), { key: "sk-alt", source: "env" });
+  assert.deepEqual(await resolveTypesafeKey(base), { key: "sk-from-jev-config", source: "jev-config" });
+  assert.deepEqual(await resolveTypesafeKey({ ...base, jevConfigPath: path.join(cfgDir, "missing.json"), loginShell: async () => "sk-shell" }), { key: "sk-shell", source: "login-shell" });
+  assert.deepEqual(await resolveTypesafeKey({ ...base, jevConfigPath: path.join(cfgDir, "missing.json") }), { key: null, source: "none" });
+  const viaRef = await resolveTypesafeKey({ ...base, stored: () => "op://Development/Jev API Key/password" });
+  assert.deepEqual(viaRef, { key: "resolved-password", source: "modex", ref: "op://Development/Jev API Key/password" });
+  const locked = await resolveTypesafeKey({ ...base, stored: () => "op://locked/x/y" });
+  assert.deepEqual([locked.key, locked.source, locked.ref], [null, "modex", "op://locked/x/y"]);
+  assert.match(locked.problem!, /1Password is locked/);
+  assert.deepEqual(refs, ["op://Development/Jev API Key/password", "op://locked/x/y"]);
+  assert.equal(isSecretRef(" op://a/b/c"), true);
+  assert.equal(isSecretRef("sk-x"), false);
+  assert.equal(readJevConfigKey(path.join(cfgDir, "nope.json")), null);
+  fs.writeFileSync(cfg, "not json");
+  assert.equal(readJevConfigKey(cfg), null);
+  assert.equal(jevConfigPath({ JEV_CONFIG: "/x/c.json" }), "/x/c.json");
+  assert.ok(jevConfigPath({}).endsWith(path.join(".config", "jev", "config.json")));
+  // The old positional form still works.
+  assert.deepEqual(await resolveTypesafeKey({ TYPESAFE_API_KEY: "sk-old", MODEX_NO_LOGIN_PATH: "1" } as NodeJS.ProcessEnv), { key: "sk-old", source: "env" });
+});
+
+test("jev CLI transport: runs `jev run - --raw` with the key in the child env only, and maps its exit codes", async () => {
+  const { cliTransport, cliError } = await import("../src/main/engine/routing/jev.js");
+  const { FakeProcess, fakeSpawn } = await import("./fakeproc.js");
+  const proc = new FakeProcess();
+  const { spawn, calls } = fakeSpawn(proc);
+  const envs: NodeJS.ProcessEnv[] = [];
+  const spawnImpl = ((file: string, args: string[], opts: { env?: NodeJS.ProcessEnv }) => { envs.push(opts.env ?? {}); return spawn(file, args, opts); }) as unknown as typeof spawn;
+  const t = cliTransport("/usr/local/bin/jev", { apiKey: "sk-secret", env: { PATH: "/bin" }, spawnImpl: spawnImpl as never, timeoutMs: 2000 });
+  const pending = t({ model: "jev-latest", state: "s", questions: {} });
+  await proc.waitFor((l) => l.includes('"model":"jev-latest"'));
+  assert.deepEqual(calls[0]!.args, ["run", "-", "--raw", "--compact", "--attempts", "1"]);
+  assert.equal(calls[0]!.file, "/usr/local/bin/jev");
+  assert.deepEqual([envs[0]!.TYPESAFE_API_KEY, envs[0]!.JEV_OUTPUT, envs[0]!.JEV_TIMEOUT_MS, envs[0]!.PATH], ["sk-secret", "json", "2000", "/bin"]);
+  proc.emitLine(jevAnswers("ops", 1));
+  proc.close(0);
+  const res = await pending;
+  assert.equal((res.answers.task as { choice: string }).choice, "ops");
+  // Errors: the CLI's JSON error object, its plain-text form, and a bare exit 3.
+  assert.deepEqual([cliError('{"error":{"code":"billing","message":"No credits.","status":402,"exit":1}}', 1).code, cliError('{"error":{"code":"billing","message":"No credits.","status":402,"exit":1}}', 1).message], ["billing", "No credits."]);
+  assert.equal(cliError("error: TypeSafe rejected the API key. (HTTP 401)", 3).code, "auth");
+  assert.equal(cliError("error: No API key. Run `jev doctor`.", 3).code, "auth");
+  assert.equal(cliError("boom", 1).code, "unknown");
+  const pretty = cliError(JSON.stringify({ error: { code: "auth", message: "Cannot authenticate with the server.", status: 401, exit: 3 } }, null, 2), 3);
+  assert.deepEqual([pretty.code, pretty.status, pretty.message], ["auth", 401, "Cannot authenticate with the server."], "pretty-printed JSON across lines still parses");
+  assert.equal(cliError('{"error":{"code":"usage","message":"bad flag","status":null,"exit":1}}', 1).code, "validation");
+  const failing = new FakeProcess();
+  const t2 = cliTransport("jev", { spawnImpl: fakeSpawn(failing).spawn as never });
+  const p2 = t2({ model: "jev-latest", state: "s", questions: {} });
+  await failing.waitFor((l) => l.includes("jev-latest"));
+  failing.stderr.write('{"error":{"code":"billing","message":"Your organization has no credits.","status":402,"exit":1}}\n');
+  failing.close(1);
+  await assert.rejects(p2, (e: JevError) => e.code === "billing" && e.status === 402);
+  const slow = new FakeProcess();
+  const t3 = cliTransport("jev", { spawnImpl: fakeSpawn(slow).spawn as never, timeoutMs: 20 });
+  await assert.rejects(t3({ model: "jev-latest", state: "s", questions: {} }), (e: JevError) => e.code === "timeout" && slow.killed);
+  const aborted = new FakeProcess();
+  const ac = new AbortController();
+  const t4 = cliTransport("jev", { spawnImpl: fakeSpawn(aborted).spawn as never });
+  const p4 = t4({ model: "jev-latest", state: "s", questions: {} }, ac.signal);
+  ac.abort();
+  await assert.rejects(p4, (e: JevError) => e.code === "timeout" && aborted.killed);
+});
+
+test("router: prefers the jev CLI when found, stores a hand-entered key in the keychain, and pings through the transport", async () => {
+  const { SecretStore, testCipher } = await import("../src/main/engine/secrets.js");
+  const { FakeProcess, fakeSpawn } = await import("./fakeproc.js");
+  const home = tmpdir("modex-home-");
+  const secrets = new SecretStore(home, testCipher);
+  const procs: InstanceType<typeof FakeProcess>[] = [];
+  const spawnImpl = ((file: string, args: string[], opts: unknown) => { const p = new FakeProcess(); procs.push(p); setTimeout(() => { p.emitLine(jevAnswers("small_edit", 0.5, { reachable: { type: "noul", noul: 0.9 } })); p.close(0); }, 5); return fakeSpawn(p).spawn(file, args, opts as never); }) as unknown as SpawnLikeT;
+  let policy = { ...DEFAULT_ROUTING };
+  const router = new Router({ home, policy: () => policy, listModels, secrets, env: { MODEX_NO_LOGIN_PATH: "1" }, keyResolver: { jevConfigPath: path.join(home, "no-config.json"), loginShell: async () => null }, detectCli: async (bin) => (bin === "jev" ? { bin: "/opt/bin/jev", version: "0.2.0" } : null), spawnImpl });
+  // No key anywhere, but the CLI is installed: the CLI resolves its own key.
+  let st = await router.status();
+  assert.deepEqual([st.live, st.keySource, st.keyLast4, st.transport, st.secrets.present, st.secrets.backend], [true, "none", null, { kind: "cli", bin: "/opt/bin/jev", version: "0.2.0" }, false, "test cipher (not secure)"]);
+  const ping = await router.test();
+  assert.deepEqual([ping.ok, ping.transport], [true, "cli"]);
+  assert.match(ping.message, /jev CLI 0\.2\.0/);
+  assert.equal(procs.length, 1);
+  // A key typed into Settings goes to the keychain, is reported masked, and rides along in the CLI's env.
+  st = await router.setKey("sk-typed-into-modex-7777");
+  assert.deepEqual([st.keySource, st.keyLast4, st.secrets.present, st.transport.kind], ["modex", "7777", true, "cli"]);
+  assert.equal(fs.readFileSync(path.join(home, "app", "secrets.json"), "utf8").includes("sk-typed"), false);
+  const r = await router.route({ thread: thread({ backend: "codex" }), text: "rename a to b", items: [], project: { name: "demo" } });
+  assert.equal(r.source, "jev");
+  assert.equal(procs.length, 2);
+  // Policy says HTTPS only: the CLI is ignored and the stored key feeds the HTTP transport.
+  policy = { ...DEFAULT_ROUTING, jev_transport: "http" };
+  router.reset();
+  st = await router.status();
+  assert.deepEqual([st.transport.kind, st.keySource], ["http", "modex"]);
+  // Clearing the key with HTTPS-only policy leaves nothing to judge with.
+  st = await router.clearKey();
+  assert.deepEqual([st.live, st.transport.kind, st.keySource], [false, "none", "none"]);
+  assert.match(st.detail!, /No TypeSafe API key found/);
+  assert.deepEqual((await router.test()).ok, false);
+  // A locked 1Password reference is reported as the problem, not silently ignored.
+  await router.setKey("op://Vault/Jev/password");
+  const lockedRouter = new Router({ home, policy: () => ({ ...DEFAULT_ROUTING, jev_transport: "http" }), listModels, secrets, env: { MODEX_NO_LOGIN_PATH: "1" }, keyResolver: { jevConfigPath: path.join(home, "no-config.json"), loginShell: async () => null, readRef: async () => { throw new Error("1Password is locked; unlock it and retry."); } } });
+  const ls = await lockedRouter.status();
+  assert.deepEqual([ls.live, ls.keySource, ls.keyRef], [false, "modex", "op://Vault/Jev/password"]);
+  assert.match(ls.detail!, /1Password is locked/);
+  // A rejected key disables Jev for the session; a successful test or a new key re-enables it.
+  const rejecting = new Router({ home, policy: () => DEFAULT_ROUTING, listModels, transport: async () => { throw new JevError("TypeSafe rejected the API key.", "auth", 401); } });
+  await rejecting.route({ thread: thread(), text: "x", items: [], project: { name: "demo" } });
+  assert.equal((await rejecting.status()).live, false);
+  rejecting.reset();
+  assert.equal((await rejecting.status()).live, true);
+});
+type SpawnLikeT = import("../src/main/engine/routing/jev.js").SpawnLike;

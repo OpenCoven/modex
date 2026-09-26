@@ -173,7 +173,8 @@ test("⇧⌘N creates a worktree thread and the header shows its branch and path
 
 test("state survives a relaunch: the thread and its transcript are restored", async () => {
   await app.close();
-  app = await electron.launch({ args: [appDir], cwd: appDir, env: { ...process.env, MODEX_HOME: home, MODEX_NO_LOGIN_PATH: "1", TYPESAFE_API_KEY: "" } });
+  // MODEX_E2E keeps the secret store on the test cipher: CI runners have no unlocked keychain.
+  app = await electron.launch({ args: [appDir], cwd: appDir, env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1", MODEX_NO_LOGIN_PATH: "1", TYPESAFE_API_KEY: "" } });
   page = await app.firstWindow();
   await expect(page.locator(".threads .thread")).toHaveCount(2);
   await page.locator(".threads .thread").nth(1).click();
@@ -215,9 +216,32 @@ test("⚡ Auto: the judge picks a model before the turn and leaves an expandable
   // Settings explains why the heuristic judged, counts the auto turn, and exposes the policy knobs.
   await page.locator(".sidebar button", { hasText: "Settings" }).click();
   const status = page.locator("[data-testid=routing-status]");
-  await expect(status).toContainText("No TYPESAFE_API_KEY found");
+  await expect(status).toContainText("No TypeSafe API key found");
   await expect(status).toContainText("1 auto turn so far");
   await expect(page.locator(".modal select").filter({ has: page.locator("option[value=economy]") })).toHaveValue("balanced");
   await page.locator(".modal button", { hasText: "Cancel" }).click();
   await expect(page.locator(".modal")).toHaveCount(0);
+});
+
+test("a key typed into Settings is kept encrypted outside state.json, reported masked, and can be cleared", async () => {
+  await page.locator(".sidebar button", { hasText: "Settings" }).click();
+  const keyBox = page.locator("[data-testid=jev-key]");
+  await expect(keyBox.locator("input[type=password]")).toHaveAttribute("placeholder", /sk-…/);
+  await expect(keyBox.locator("button", { hasText: "Clear" })).toBeDisabled();
+  await keyBox.locator("input[type=password]").fill("sk-e2e-typed-key-4321");
+  await keyBox.locator("button", { hasText: "Save key" }).click();
+  const status = page.locator("[data-testid=routing-status]");
+  await expect(status).toContainText("Jev configured");
+  await expect(status).toContainText("key ****4321 from Modex keychain");
+  await expect(keyBox.locator(".field > span")).toContainText("saved in test cipher (not secure)");
+  await expect(keyBox.locator("input[type=password]")).toHaveValue("");
+  // On disk: never in state.json, never in plaintext, and the secrets file is owner-only.
+  expect(fs.readFileSync(path.join(home, "app", "state.json"), "utf8")).not.toContain("4321");
+  const secretsFile = path.join(home, "app", "secrets.json");
+  expect(fs.readFileSync(secretsFile, "utf8")).not.toContain("sk-e2e-typed-key-4321");
+  expect(fs.statSync(secretsFile).mode & 0o777).toBe(0o600);
+  await keyBox.locator("button", { hasText: "Clear" }).click();
+  await expect(status).toContainText("No TypeSafe API key found");
+  await expect(keyBox.locator("button", { hasText: "Clear" })).toBeDisabled();
+  await page.locator(".modal button", { hasText: "Cancel" }).click();
 });

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, nativeTheme } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, nativeTheme, safeStorage } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +8,7 @@ import { ThreadRunner } from "./engine/runner.js";
 import * as gitx from "./engine/git.js";
 import { runDemo } from "./engine/demo.js";
 import { openTerminal } from "./engine/open-terminal.js";
+import { SecretStore, electronCipher, testCipher } from "./engine/secrets.js";
 import type { BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -28,7 +29,9 @@ let win: BrowserWindow | null = null;
 const emit = (event: ThreadEvent): void => {
   win?.webContents.send("thread:event", event);
 };
-const runner = new ThreadRunner({ home, store, emit });
+// The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
+const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
+const runner = new ThreadRunner({ home, store, emit, secrets });
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
 function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>): void {
@@ -89,6 +92,9 @@ handle("routing:reset", () => {
   runner.router.fit.reset();
   return runner.router.status();
 });
+handle("routing:setKey", ({ key }) => runner.router.setKey(key));
+handle("routing:clearKey", () => runner.router.clearKey());
+handle("routing:test", () => runner.router.test());
 handle("backends:health", async () => {
   const out = {} as Record<BackendId, { ok: boolean; detail: string }>;
   for (const id of ["claude", "codex", "mock"] as BackendId[]) {

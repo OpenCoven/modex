@@ -8,6 +8,7 @@ import { ClaudeBackend } from "./backends/claude.js";
 import { CodexBackend } from "./backends/codex.js";
 import { MockBackend } from "./backends/mock.js";
 import { Router } from "./routing/router.js";
+import type { SecretStore } from "./secrets.js";
 
 interface Live {
   abort: AbortController | null;
@@ -26,6 +27,8 @@ export interface RunnerOptions {
   backends?: Partial<Record<BackendId, Backend>>;
   /** Override the Auto router (tests inject an offline one or a fake Jev transport). */
   router?: Router;
+  /** Where a hand-entered TypeSafe key lives (OS keychain via Electron safeStorage). */
+  secrets?: SecretStore;
 }
 
 /**
@@ -46,7 +49,7 @@ export class ThreadRunner {
       codex: o.backends?.codex ?? new CodexBackend(s().codex_bin),
       mock: o.backends?.mock ?? new MockBackend(() => s().mock_script, o.home),
     };
-    this.router = o.router ?? new Router({ home: o.home, policy: () => s().routing, listModels: (b) => this.listModels(b) });
+    this.router = o.router ?? new Router({ home: o.home, policy: () => s().routing, listModels: (b) => this.listModels(b), secrets: o.secrets });
   }
 
   backend(id: BackendId): Backend {

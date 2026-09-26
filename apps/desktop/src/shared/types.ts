@@ -95,6 +95,10 @@ export interface RoutingPolicy {
   premium_turns_per_day: number | null;
   /** TypeSafe model id for the judge. */
   jev_model: string;
+  /** How to reach Jev: the `jev` CLI when installed (auto), always the CLI, or Modex's own HTTPS call. */
+  jev_transport: "auto" | "cli" | "http";
+  /** Executable for the jev CLI; a plain name resolves on PATH. */
+  jev_bin: string;
 }
 
 export const DEFAULT_ROUTING: RoutingPolicy = {
@@ -107,14 +111,35 @@ export const DEFAULT_ROUTING: RoutingPolicy = {
   min_confidence: 0.6,
   premium_turns_per_day: null,
   jev_model: "jev-latest",
+  jev_transport: "auto",
+  jev_bin: "jev",
 };
 
+export type KeySource = "modex" | "env" | "jev-config" | "login-shell" | "none";
+
+/** Result of a judge ping from Settings → "Test judge". Never carries the key. */
+export interface RoutingTest {
+  ok: boolean;
+  message: string;
+  code?: string;
+  status?: number;
+  transport: "cli" | "http" | "none";
+  ms: number;
+}
+
 export interface RoutingStatus {
-  /** A TypeSafe key was found, so Auto judges with Jev; otherwise the built-in heuristic runs. */
+  /** A judge is configured (key or CLI) and has not been rejected this session; otherwise the heuristic runs. */
   live: boolean;
-  keySource: "env" | "login-shell" | "none";
-  /** Why Jev is not being used this session (no key, rejected key, no credits). */
+  keySource: KeySource;
+  /** Last four characters of the resolved key, for telling keys apart. */
+  keyLast4: string | null;
+  /** The op:// reference the key came from, when it did. */
+  keyRef: string | null;
+  /** Why Jev is not being used this session (no key, locked 1Password, rejected key, no credits). */
   detail?: string;
+  transport: { kind: "cli" | "http" | "none"; bin?: string; version?: string };
+  /** Modex's own encrypted store for a hand-entered key. */
+  secrets: { backend: string; available: boolean; present: boolean; savedAt: string | null };
   model: string;
   questionSetVersion: number;
   fit: { tasks: Record<string, { offset: number; samples: number; overridesUp: number; overridesDown: number; failures: number }>; premiumToday: number; routes: number };
@@ -187,6 +212,11 @@ export interface BridgeCommands {
   "thread:update": { req: { threadId: string; patch: ThreadPatch }; res: Thread };
   "routing:status": { req: undefined; res: RoutingStatus };
   "routing:reset": { req: undefined; res: RoutingStatus };
+  /** Stores a hand-entered key (or op:// reference) in the OS keychain; never in state.json. */
+  "routing:setKey": { req: { key: string }; res: RoutingStatus };
+  "routing:clearKey": { req: undefined; res: RoutingStatus };
+  /** One tiny judge request through the active transport. */
+  "routing:test": { req: undefined; res: RoutingTest };
   "models:list": { req: { backend: BackendId }; res: { models: ModelInfo[]; error?: string } };
   "backends:health": { req: undefined; res: Record<BackendId, { ok: boolean; detail: string }> };
   "thread:delete": { req: { threadId: string; removeWorktree?: boolean }; res: AppState };
