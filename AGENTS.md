@@ -37,7 +37,10 @@ itself driving one of them.
 
 - `apps/desktop` — the Electron app (`src/main` process + backends, `src/renderer` React UI,
   `e2e/` Playwright). `packages/core` — the offline scripted engine used by demos and tests.
-- Real models run only through the `claude` and `codex` CLIs. There is no API mode; do not
-  add one.
+- Real models run only through the `claude` and `codex` CLIs. There is no API mode for
+  coding turns; do not add one. The one network call outside the CLIs is the optional Auto
+  routing judge (Jev, `apps/desktop/src/main/engine/routing/`), which answers typed questions
+  about a request and never runs a turn or sees file contents; without `TYPESAFE_API_KEY`
+  it is replaced by a built-in heuristic. See `docs/auto-routing.md`.
 - Scratch scripts go in `apps/desktop/.probes/` (git-ignored). Playwright wipes
   `apps/desktop/test-results/` on every run.

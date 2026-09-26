@@ -10,6 +10,7 @@ interface Props {
   plan: boolean;
   model: string;
   effort?: string;
+  auto: boolean;
   models: ModelInfo[];
   modelsError?: string;
   onBackend: (b: BackendId) => void;
@@ -17,13 +18,14 @@ interface Props {
   onPlan: (plan: boolean) => void;
   onModel: (m: string) => void;
   onEffort: (e: string | undefined) => void;
+  onAuto: (auto: boolean) => void;
   onSend: (text: string) => void;
   onStop: () => void;
   /** Set by the ⌘⏎ / focus shortcuts in App. */
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
 }
 
-export function Composer({ busy, backend, mode, plan, model, effort, models, modelsError, onBackend, onMode, onPlan, onModel, onEffort, onSend, onStop, inputRef }: Props) {
+export function Composer({ busy, backend, mode, plan, model, effort, auto, models, modelsError, onBackend, onMode, onPlan, onModel, onEffort, onAuto, onSend, onStop, inputRef }: Props) {
   const [text, setText] = useState("");
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const ta = inputRef ?? fallbackRef;
@@ -75,6 +77,9 @@ export function Composer({ busy, backend, mode, plan, model, effort, models, mod
           </label>
           <button className={`btn small toggle ${plan ? "on" : ""}`} onClick={() => onPlan(!plan)} disabled={busy} title="Plan mode: investigate read-only and return a plan instead of editing (⇧⌘P)">
             ▤ Plan
+          </button>
+          <button className={`btn small toggle auto ${auto ? "on" : ""}`} onClick={() => onAuto(!auto)} disabled={busy} aria-pressed={auto} title="Auto: before each turn a fast judge (Jev, or a built-in heuristic without a key) reads your request and picks the model, reasoning effort, and fast mode within your limits. Pick a model by hand any time — Auto learns from it.">
+            ⚡ Auto
           </button>
           <ModelMenu models={models} model={model} effort={effort} error={modelsError} disabled={busy} onModel={onModel} onEffort={onEffort} />
           <span className="spacer" />

@@ -12,13 +12,16 @@ export class ClaudeBackend implements Backend {
   readonly id = "claude" as const;
   constructor(private readonly bin = process.env.MODEX_CLAUDE_BIN ?? "claude", private readonly spawnImpl = spawn) {}
 
+  /** `claude --effort` levels (from `claude --help`); no default so the CLI's own setting applies. */
+  static readonly EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+
   static readonly MODELS: ModelInfo[] = [
     // Aliases always point at the newest model of each family (resolved by the CLI on every run);
     // a full model id such as "claude-fable-5-1" can be typed as well.
-    { id: "fable", label: "Fable (latest)", description: "Newest Fable — currently claude-fable-5-1", isDefault: true },
-    { id: "opus", label: "Opus (latest)", description: "Newest Opus — currently claude-opus-5-5" },
-    { id: "sonnet", label: "Sonnet (latest)", description: "Newest Sonnet — currently claude-sonnet-5" },
-    { id: "haiku", label: "Haiku (latest)", description: "Newest Haiku — currently claude-haiku-4-5" },
+    { id: "fable", label: "Fable (latest)", description: "Newest Fable — currently claude-fable-5-1", isDefault: true, efforts: ClaudeBackend.EFFORTS },
+    { id: "opus", label: "Opus (latest)", description: "Newest Opus — currently claude-opus-5-5", efforts: ClaudeBackend.EFFORTS },
+    { id: "sonnet", label: "Sonnet (latest)", description: "Newest Sonnet — currently claude-sonnet-5", efforts: ClaudeBackend.EFFORTS },
+    { id: "haiku", label: "Haiku (latest)", description: "Newest Haiku — currently claude-haiku-4-5", efforts: ClaudeBackend.EFFORTS },
   ];
 
   async listModels(): Promise<ModelInfo[]> {
@@ -35,6 +38,9 @@ export class ClaudeBackend implements Backend {
     else if (opts.mode === "agent") args.push("--permission-mode", "acceptEdits");
     else args.push("--permission-mode", "bypassPermissions");
     if (opts.model) args.push("--model", opts.model);
+    if (opts.effort) args.push("--effort", opts.effort);
+    // Fast mode is a settings key in Claude Code; `--settings` accepts inline JSON for this session only.
+    if (opts.fast) args.push("--settings", JSON.stringify({ fastMode: true }));
     if (opts.resume) args.push("--resume", opts.resume);
     for (const d of opts.addDirs ?? []) args.push("--add-dir", d);
     return args;

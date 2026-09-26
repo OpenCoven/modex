@@ -1,4 +1,5 @@
 import type { ModexBridge, ThreadEvent } from "../shared/types";
+import { DEFAULT_ROUTING } from "../shared/types";
 
 declare global {
   interface Window {
@@ -10,7 +11,7 @@ declare global {
 const inert: ModexBridge = {
   platform: "web",
   async invoke(channel) {
-    if (channel === "state:get") return { version: 1, projects: [], threads: [], settings: { provider: "openai", base_url: "", api_key_env: "OPENAI_API_KEY", default_model: "gpt-5-codex", default_mode: "agent" } } as never;
+    if (channel === "state:get") return { version: 1, projects: [], threads: [], settings: { default_backend: "codex", default_mode: "agent", default_model: { codex: "", claude: "", mock: "mock" }, claude_bin: "claude", codex_bin: "codex", routing: DEFAULT_ROUTING } } as never;
     throw new Error("Modex bridge unavailable: open this UI inside the Electron app.");
   },
   onEvent(_cb: (e: ThreadEvent) => void) {
