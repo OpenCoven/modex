@@ -280,3 +280,5 @@ kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1px sol
 .check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 6px 0; }
 .check input { margin: 0; }
 .section-title { font-size: 13px; font-weight: 600; color: var(--fg-1); margin: 14px 0 6px; letter-spacing: .01em; }
+/* Settings grew with the Auto routing section; the dialog scrolls instead of overflowing a short window (CI runners). */
+.modal { max-height: calc(100vh - 72px); overflow-y: auto; }
