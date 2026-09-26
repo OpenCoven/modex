@@ -33,6 +33,10 @@ modex/
   shared with the [`jev` CLI](https://github.com/TypeSafeAI/cli), which Modex drives
   directly when it is installed. The coding turn itself still runs only through the
   CLIs. See [docs/auto-routing.md](docs/auto-routing.md).
+- **Launch from anywhere.** Opened from Finder or the Dock, Modex reads your login shell's
+  PATH once at startup (interactive `zsh -ilc`, falling back to `-lc`), so `claude`, `codex`,
+  and `jev` installed under nvm, Homebrew, or `~/.local/bin` are found exactly as in a terminal.
+  Set `MODEX_NO_LOGIN_PATH=1` to skip this.
 - **Projects & threads.** Open any local folder as a project. Each project holds threads;
   threads run **in parallel** and independently, each with its own backend, model, and mode.
 - **Worktree threads.** `⑂` starts a thread in a fresh `git worktree` so agents never step on

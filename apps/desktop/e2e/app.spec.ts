@@ -30,7 +30,8 @@ function seedHome(): { home: string; repo: string } {
       projects: [{ id: "p1", name: path.basename(repo), path: repo, addedAt: new Date().toISOString() }],
       threads: [],
       // Chat mode is read-only, so the scripted apply_patch must be approved — that is the card we click.
-      settings: { default_backend: "mock", default_mode: "chat", default_model: { codex: "", claude: "", mock: "mock" }, claude_bin: "claude", codex_bin: "codex", mock_script: mockScript },
+      // HTTPS transport so a real `jev` on the machine's PATH never changes what the judge reports.
+      settings: { default_backend: "mock", default_mode: "chat", default_model: { codex: "", claude: "", mock: "mock" }, claude_bin: "claude", codex_bin: "codex", mock_script: mockScript, routing: { jev_transport: "http" } },
     }),
   );
   return { home, repo };
@@ -43,7 +44,7 @@ let repo: string;
 
 test.beforeAll(async () => {
   ({ home, repo } = seedHome());
-  app = await electron.launch({ args: [appDir], cwd: appDir, env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1", MODEX_NO_LOGIN_PATH: "1", TYPESAFE_API_KEY: "" } });
+  app = await electron.launch({ args: [appDir], cwd: appDir, env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1", MODEX_NO_LOGIN_PATH: "1", TYPESAFE_API_KEY: "", JEV_API_KEY: "", JEV_CONFIG: path.join(os.tmpdir(), "modex-e2e-no-jev-config.json") } });
   page = await app.firstWindow();
   await page.waitForLoadState("domcontentloaded");
 });
@@ -174,7 +175,7 @@ test("⇧⌘N creates a worktree thread and the header shows its branch and path
 test("state survives a relaunch: the thread and its transcript are restored", async () => {
   await app.close();
   // MODEX_E2E keeps the secret store on the test cipher: CI runners have no unlocked keychain.
-  app = await electron.launch({ args: [appDir], cwd: appDir, env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1", MODEX_NO_LOGIN_PATH: "1", TYPESAFE_API_KEY: "" } });
+  app = await electron.launch({ args: [appDir], cwd: appDir, env: { ...process.env, MODEX_HOME: home, MODEX_E2E: "1", MODEX_NO_LOGIN_PATH: "1", TYPESAFE_API_KEY: "", JEV_API_KEY: "", JEV_CONFIG: path.join(os.tmpdir(), "modex-e2e-no-jev-config.json") } });
   page = await app.firstWindow();
   await expect(page.locator(".threads .thread")).toHaveCount(2);
   await page.locator(".threads .thread").nth(1).click();
