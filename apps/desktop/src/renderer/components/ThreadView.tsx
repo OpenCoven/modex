@@ -50,46 +50,46 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
   }, [items.length, items.at(-1)]);
 
   return (
-    <section className="thread-view">
+    <section className="thread-view" data-testid="thread-view" data-thread-id={thread.id}>
       <header className="topbar drag">
         <div className="crumbs">
-          <span className="crumb">{project.name}</span>
+          <span className="crumb" data-testid="thread-project">{project.name}</span>
           <span className="sep">/</span>
-          <input className="title-input" value={thread.title} onChange={(e) => onUpdate({ title: e.target.value })} spellCheck={false} />
+          <input className="title-input" data-testid="thread-title" aria-label="Thread title" value={thread.title} onChange={(e) => onUpdate({ title: e.target.value })} spellCheck={false} />
         </div>
         <div className="topbar-right no-drag">
-          <span className={`pill backend ${thread.backend}`}>{thread.backend === "claude" ? "Claude" : thread.backend === "codex" ? "Codex" : "Mock"}{thread.model ? ` · ${thread.model}` : ""}</span>
-          {thread.auto && <span className="pill auto" title="Auto routing is on for this thread">⚡ Auto</span>}
-          {thread.plan && <span className="pill plan">▤ Plan</span>}
-          <span className={`pill status ${thread.status}`}>{label(thread.status)}</span>
-          <button className={`btn small ${showChanges ? "active" : ""}`} onClick={onToggleChanges}>
+          <span className={`pill backend ${thread.backend}`} data-testid="thread-backend">{thread.backend === "claude" ? "Claude" : thread.backend === "codex" ? "Codex" : "Mock"}{thread.model ? ` · ${thread.model}` : ""}</span>
+          {thread.auto && <span className="pill auto" data-testid="auto-indicator" title="Auto routing is on for this thread">⚡ Auto</span>}
+          {thread.plan && <span className="pill plan" data-testid="plan-indicator">▤ Plan</span>}
+          <span className={`pill status ${thread.status}`} data-testid="thread-status" data-status={thread.status}>{label(thread.status)}</span>
+          <button className={`btn small ${showChanges ? "active" : ""}`} onClick={onToggleChanges} data-testid="changes-toggle" aria-pressed={showChanges}>
             Changes{changedCount ? <span className="count">{changedCount}</span> : null}
           </button>
         </div>
       </header>
 
-      <div className="location" role="group" aria-label="Working directory">
-        <span className="location-kind" title={thread.worktree ? `Worktree managed by ${thread.worktree.manager === "project-script" ? "the project's scripts/worktree.sh" : "Modex"}` : "Runs directly in the project checkout"}>
+      <div className="location" role="group" aria-label="Working directory" data-testid="thread-location">
+        <span className="location-kind" data-testid="location-kind" data-kind={thread.worktree ? "worktree" : "local"} title={thread.worktree ? `Worktree managed by ${thread.worktree.manager === "project-script" ? "the project's scripts/worktree.sh" : "Modex"}` : "Runs directly in the project checkout"}>
           {thread.worktree ? "⑂" : "▸"}
         </span>
-        {thread.worktree && <code className="location-branch" title="Branch">{thread.worktree.branch}</code>}
-        <code className="location-path" title={thread.cwd}>{tailPath(shortenHome(thread.cwd))}</code>
+        {thread.worktree && <code className="location-branch" data-testid="location-branch" title="Branch">{thread.worktree.branch}</code>}
+        <code className="location-path" data-testid="location-path" title={thread.cwd}>{tailPath(shortenHome(thread.cwd))}</code>
         <span className="spacer" />
-        <button className="btn small ghost" onClick={() => onOpenPath(thread.cwd)} title={`Open ${thread.cwd} in ${platform === "darwin" ? "Finder" : "the file manager"}`}>
+        <button className="btn small ghost" data-testid="action-open-folder" onClick={() => onOpenPath(thread.cwd)} title={`Open ${thread.cwd} in ${platform === "darwin" ? "Finder" : "the file manager"}`}>
           {platform === "darwin" ? "Finder" : "Files"}
         </button>
-        <button className="btn small ghost" onClick={() => onOpenTerminal(thread.cwd)} title={`Open a terminal at ${thread.cwd}`}>Terminal</button>
-        <button className="btn small ghost" onClick={() => void navigator.clipboard.writeText(thread.cwd)} title="Copy the full path">Copy path</button>
+        <button className="btn small ghost" data-testid="action-open-terminal" onClick={() => onOpenTerminal(thread.cwd)} title={`Open a terminal at ${thread.cwd}`}>Terminal</button>
+        <button className="btn small ghost" data-testid="action-copy-path" onClick={() => void navigator.clipboard.writeText(thread.cwd)} title="Copy the full path">Copy path</button>
       </div>
 
-      <div className="transcript" ref={scroller}>
+      <div className="transcript" ref={scroller} data-testid="transcript">
         {items.length === 0 && (
           <div className="transcript-empty">
             <p>Describe a task. Modex will inspect <code>{thread.cwd}</code>, then read, edit, and run what it needs — asking first when the mode requires it.</p>
           </div>
         )}
         {items.map((item) => <Item key={item.id} item={item} onAnswer={onAnswer} />)}
-        {thread.status === "running" && <div className="working"><span className="spinner" /> Working…</div>}
+        {thread.status === "running" && <div className="working" data-testid="working"><span className="spinner" /> Working…</div>}
       </div>
 
       <Composer
@@ -123,21 +123,21 @@ function label(s: Thread["status"]): string {
 function Item({ item, onAnswer }: { item: ThreadItem; onAnswer: Props["onAnswer"] }) {
   switch (item.kind) {
     case "user":
-      return <div className="msg user"><div className="bubble">{item.text}</div></div>;
+      return <div className="msg user" data-testid="item" data-item-kind="user"><div className="bubble" data-testid="item-text">{item.text}</div></div>;
     case "assistant":
-      return <div className="msg assistant"><Markdown text={item.text} /></div>;
+      return <div className="msg assistant" data-testid="item" data-item-kind="assistant"><Markdown text={item.text} /></div>;
     case "tool":
       return <ToolItem item={item} />;
     case "approval":
       return (
-        <div className={`approval ${item.answer ? "answered" : ""}`}>
-          <div className="approval-head">
+        <div className={`approval ${item.answer ? "answered" : ""}`} data-testid="item" data-item-kind="approval" data-answered={item.answer ? "true" : "false"}>
+          <div className="approval-head" data-testid="approval-question">
             <span className="shield">⚠</span>
             <span>{item.question}</span>
           </div>
           {item.detail && <pre className="detail">{item.detail}</pre>}
           {item.answer ? (
-            <div className="approval-answer">{item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
+            <div className="approval-answer" data-testid="approval-answer">{item.answer === "yes" ? "Approved" : item.answer === "always" ? "Approved — always for this command" : "Denied"}</div>
           ) : (
             <div className="row">
               <button className="btn primary small" onClick={() => onAnswer(item.id, "yes")}>Approve</button>
@@ -148,7 +148,7 @@ function Item({ item, onAnswer }: { item: ThreadItem; onAnswer: Props["onAnswer"
         </div>
       );
     case "notice":
-      return <div className={`notice ${item.level}`}>{item.text}</div>;
+      return <div className={`notice ${item.level}`} data-testid="item" data-item-kind="notice" data-level={item.level}>{item.text}</div>;
     case "thinking":
       return <ThinkingItem item={item} />;
     case "route":
@@ -162,17 +162,17 @@ function RouteItem({ item }: { item: Extract<ThreadItem, { kind: "route" }> }) {
   const backend = item.backend === "claude" ? "Claude" : item.backend === "codex" ? "Codex" : "Mock";
   const extras = [item.effort, item.fast ? "fast" : null].filter(Boolean).join(" · ");
   return (
-    <div className={`route ${item.source} ${open ? "open" : ""}`}>
-      <button className="route-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+    <div className={`route ${item.source} ${open ? "open" : ""}`} data-testid="item" data-item-kind="route" data-source={item.source}>
+      <button className="route-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span className="route-icon">⚡</span>
-        <span className="route-label">
+        <span className="route-label" data-testid="route-label">
           {item.pinned ? "Auto kept" : "Auto picked"} <b>{backend} · {item.model}</b>{extras ? ` · ${extras}` : ""}
         </span>
-        <span className="route-meta">{item.task.replace(/_/g, " ")} · {item.source === "jev" ? `Jev ${item.confidence.toFixed(2)}` : "heuristic"}</span>
+        <span className="route-meta" data-testid="route-meta">{item.task.replace(/_/g, " ")} · {item.source === "jev" ? `Jev ${item.confidence.toFixed(2)}` : "heuristic"}</span>
         <span className="chev">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
-        <ul className="route-body">
+        <ul className="route-body" data-testid="item-body">
           {item.reasons.map((r, i) => <li key={i}>{r}</li>)}
           <li className="dim">Judged in {item.durationMs} ms · complexity {item.complexity}/3 · task confidence {item.confidence.toFixed(2)}</li>
         </ul>
@@ -187,14 +187,14 @@ function ThinkingItem({ item }: { item: Extract<ThreadItem, { kind: "thinking" }
   const isOpen = open ?? item.status === "running";
   const secs = item.durationMs != null ? Math.max(1, Math.round(item.durationMs / 1000)) : null;
   return (
-    <div className={`thinking ${item.status} ${isOpen ? "open" : ""}`}>
-      <button className="thinking-head" onClick={() => setOpen(!isOpen)} aria-expanded={isOpen}>
+    <div className={`thinking ${item.status} ${isOpen ? "open" : ""}`} data-testid="item" data-item-kind="thinking" data-status={item.status}>
+      <button className="thinking-head" data-testid="item-toggle" onClick={() => setOpen(!isOpen)} aria-expanded={isOpen}>
         <span className="thinking-icon">{item.status === "running" ? <span className="spinner" /> : "◌"}</span>
-        <span className={`thinking-label ${item.status === "running" ? "shimmer" : ""}`}>{item.status === "running" ? "Thinking…" : secs ? `Thought for ${secs}s` : "Thinking"}</span>
+        <span className={`thinking-label ${item.status === "running" ? "shimmer" : ""}`} data-testid="thinking-label">{item.status === "running" ? "Thinking…" : secs ? `Thought for ${secs}s` : "Thinking"}</span>
         <span className="spacer" />
         <span className="chev">{isOpen ? "▾" : "▸"}</span>
       </button>
-      {isOpen && (item.text.trim() ? <div className="thinking-body"><Markdown text={item.text} /></div> : <div className="thinking-body dim">{item.status === "running" ? "…" : "The CLI did not share the reasoning text for this step."}</div>)}
+      {isOpen && (item.text.trim() ? <div className="thinking-body" data-testid="item-body"><Markdown text={item.text} /></div> : <div className="thinking-body dim" data-testid="item-body">{item.status === "running" ? "…" : "The CLI did not share the reasoning text for this step."}</div>)}
     </div>
   );
 }
@@ -203,18 +203,18 @@ function ToolItem({ item }: { item: Extract<ThreadItem, { kind: "tool" }> }) {
   const [open, setOpen] = useState(false);
   const icon = item.name === "shell" ? "›_" : item.name === "apply_patch" || item.name === "write_file" ? "✎" : "◫";
   return (
-    <div className={`tool ${item.status} ${item.ok === false ? "failed" : ""}`}>
-      <button className="tool-head" onClick={() => setOpen((v) => !v)}>
+    <div className={`tool ${item.status} ${item.ok === false ? "failed" : ""}`} data-testid="item" data-item-kind="tool" data-status={item.status} data-ok={item.ok === false ? "false" : "true"}>
+      <button className="tool-head" data-testid="item-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <span className="tool-icon">{icon}</span>
-        <code className="tool-title">{item.title}</code>
+        <code className="tool-title" data-testid="tool-title">{item.title}</code>
         <span className="spacer" />
         {item.status === "running" ? <span className="spinner" /> : <span className="tool-meta">{item.ok === false ? "failed" : "done"}{item.durationMs != null ? ` · ${(item.durationMs / 1000).toFixed(1)}s` : ""}</span>}
         <span className="chev">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
-        <div className="tool-body">
+        <div className="tool-body" data-testid="item-body">
           {item.name === "apply_patch" && typeof item.args.patch === "string" ? <Patch text={item.args.patch} /> : null}
-          {item.output ? <pre className="output">{item.output}</pre> : item.status === "running" ? <pre className="output dim">running…</pre> : null}
+          {item.output ? <pre className="output" data-testid="tool-output">{item.output}</pre> : item.status === "running" ? <pre className="output dim">running…</pre> : null}
         </div>
       )}
     </div>

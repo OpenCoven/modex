@@ -16,6 +16,8 @@
     "dev": "vite",
     "screenshot": "electron . --demo --screenshot",
     "test:e2e": "npm run build && playwright test",
+    "ui:capture": "npm run build && playwright test e2e/layout.spec.ts",
+    "ui:compare": "node scripts/ui-compare.mjs",
     "dist": "npm run build && electron-builder --mac --arm64 --publish never"
   },
   "dependencies": {

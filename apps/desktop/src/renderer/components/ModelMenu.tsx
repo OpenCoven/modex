@@ -42,18 +42,18 @@ export function ModelMenu({ models, model, effort, error, disabled, onModel, onE
 
   return (
     <div className="model-menu" ref={ref}>
-      <button className={`btn small model-trigger ${error ? "warn" : ""}`} onClick={() => setOpen((v) => !v)} disabled={disabled || (!error && models.length === 0)} title={error ?? selected?.description ?? "Model"} aria-haspopup="listbox" aria-expanded={open}>
+      <button data-testid="model-picker" className={`btn small model-trigger ${error ? "warn" : ""}`} onClick={() => setOpen((v) => !v)} disabled={disabled || (!error && models.length === 0)} title={error ?? selected?.description ?? "Model"} aria-haspopup="listbox" aria-expanded={open}>
         <span className="model-trigger-label">{label}{effortLabel}</span>
         <span className="chev">{open ? "▴" : "▾"}</span>
       </button>
       {open && (
-        <div className="menu" role="listbox" aria-label="Model">
+        <div className="menu" role="listbox" aria-label="Model" data-testid="model-menu">
           {error && <div className="menu-error">{error}</div>}
           {models.map((m) => (
-            <button key={m.id} role="option" aria-selected={m.id === model} className={`menu-item ${m.id === model ? "selected" : ""}`} onClick={() => { onModel(m.id); onEffort(m.defaultEffort); if (!m.efforts?.length) setOpen(false); }}>
+            <button key={m.id} data-testid="model-option" role="option" aria-selected={m.id === model} className={`menu-item ${m.id === model ? "selected" : ""}`} onClick={() => { onModel(m.id); onEffort(m.defaultEffort); if (!m.efforts?.length) setOpen(false); }}>
               <span className="menu-check">{m.id === model ? "✓" : ""}</span>
               <span className="menu-body">
-                <span className="menu-title">{m.label}{m.isDefault ? <span className="menu-default">default</span> : null}</span>
+                <span className="menu-title" data-testid="model-option-title">{m.label}{m.isDefault ? <span className="menu-default">default</span> : null}</span>
                 {m.description && <span className="menu-desc">{m.description}</span>}
                 {m.id === model && m.efforts?.length ? (
                   <span className="effort-row" role="radiogroup" aria-label="Reasoning effort">
