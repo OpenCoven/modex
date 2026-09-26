@@ -46,10 +46,12 @@ export function Composer({ busy, backend, mode, plan, model, effort, auto, model
   };
 
   return (
-    <div className="composer">
-      <div className={`composer-box ${plan ? "plan" : ""}`}>
+    <div className="composer" data-testid="composer">
+      <div className={`composer-box ${plan ? "plan" : ""}`} data-testid="composer-box">
         <textarea
           ref={ta}
+          data-testid="composer-input"
+          aria-label="Message"
           value={text}
           placeholder={busy ? "Working… (⌘. or Stop to interrupt)" : plan ? "Describe what you want planned — nothing will be edited." : "Describe a task, ask a question, or paste an error…  (⏎ or ⌘⏎ to send)"}
           onChange={(e) => setText(e.target.value)}
@@ -62,7 +64,7 @@ export function Composer({ busy, backend, mode, plan, model, effort, auto, model
           spellCheck={false}
         />
         <div className="composer-bar">
-          <div className="segmented" role="radiogroup" aria-label="Backend">
+          <div className="segmented" role="radiogroup" aria-label="Backend" data-testid="backend-picker">
             {BACKENDS.map((b) => (
               <button key={b.id} role="radio" aria-checked={backend === b.id} className={backend === b.id ? "on" : ""} title={b.hint} onClick={() => onBackend(b.id)} disabled={busy}>
                 {b.label}
@@ -71,22 +73,22 @@ export function Composer({ busy, backend, mode, plan, model, effort, auto, model
             {backend === "mock" && <button role="radio" aria-checked className="on" title="Offline scripted engine (demo)">Mock</button>}
           </div>
           <label className="select" title={modeInfo?.hint}>
-            <select value={mode} onChange={(e) => onMode(e.target.value as Mode)} disabled={busy}>
+            <select data-testid="mode-picker" aria-label="Mode" value={mode} onChange={(e) => onMode(e.target.value as Mode)} disabled={busy}>
               {MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
           </label>
-          <button className={`btn small toggle ${plan ? "on" : ""}`} onClick={() => onPlan(!plan)} disabled={busy} title="Plan mode: investigate read-only and return a plan instead of editing (⇧⌘P)">
+          <button className={`btn small toggle ${plan ? "on" : ""}`} onClick={() => onPlan(!plan)} disabled={busy} data-testid="plan-toggle" aria-pressed={plan} title="Plan mode: investigate read-only and return a plan instead of editing (⇧⌘P)">
             ▤ Plan
           </button>
-          <button className={`btn small toggle auto ${auto ? "on" : ""}`} onClick={() => onAuto(!auto)} disabled={busy} aria-pressed={auto} title="Auto: before each turn a fast judge (Jev, or a built-in heuristic without a key) reads your request and picks the model, reasoning effort, and fast mode within your limits. Pick a model by hand any time — Auto learns from it.">
+          <button className={`btn small toggle auto ${auto ? "on" : ""}`} onClick={() => onAuto(!auto)} disabled={busy} aria-pressed={auto} data-testid="auto-toggle" title="Auto: before each turn a fast judge (Jev, or a built-in heuristic without a key) reads your request and picks the model, reasoning effort, and fast mode within your limits. Pick a model by hand any time — Auto learns from it.">
             ⚡ Auto
           </button>
           <ModelMenu models={models} model={model} effort={effort} error={modelsError} disabled={busy} onModel={onModel} onEffort={onEffort} />
           <span className="spacer" />
           {busy ? (
-            <button className="btn danger" onClick={onStop}>■ Stop</button>
+            <button className="btn danger" onClick={onStop} data-testid="stop">■ Stop</button>
           ) : (
-            <button className="btn primary send" onClick={submit} disabled={!text.trim()}>Send <kbd>⌘⏎</kbd></button>
+            <button className="btn primary send" data-testid="send" onClick={submit} disabled={!text.trim()}>Send <kbd>⌘⏎</kbd></button>
           )}
         </div>
         {modelsError && <div className="composer-warn">⚠ {modelsError}</div>}
