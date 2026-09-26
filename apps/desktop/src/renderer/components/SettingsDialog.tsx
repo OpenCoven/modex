@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { BackendId, EffortLevel, Mode, ModelInfo, RoutingPolicy, RoutingStatus, Settings } from "../../shared/types";
+import type { BackendId, EffortLevel, Mode, ModelInfo, RoutingPolicy, RoutingStatus, RoutingTest, Settings } from "../../shared/types";
 import { BACKENDS, EFFORT_LEVELS, MODES } from "../../shared/types";
 import { bridge } from "../bridge";
 
@@ -14,6 +14,10 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
   const [health, setHealth] = useState<Record<BackendId, { ok: boolean; detail: string }> | null>(null);
   const [lists, setLists] = useState<Partial<Record<BackendId, { models: ModelInfo[]; error?: string }>>>({});
   const [routing, setRouting] = useState<RoutingStatus | null>(null);
+  const [keyDraft, setKeyDraft] = useState("");
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [keyError, setKeyError] = useState<string | null>(null);
+  const [test, setTest] = useState<RoutingTest | "running" | null>(null);
 
   useEffect(() => {
     void bridge.invoke("backends:health", undefined).then(setHealth).catch(() => setHealth(null));
@@ -36,6 +40,28 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
   const setR = <K extends keyof RoutingPolicy>(k: K, v: RoutingPolicy[K]) => setS((x) => ({ ...x, routing: { ...x.routing, [k]: v } }));
   const r = s.routing;
   const learned = routing ? Object.entries(routing.fit.tasks).filter(([, t]) => t.offset !== 0) : [];
+  const sourceLabel: Record<RoutingStatus["keySource"], string> = { modex: "Modex keychain", env: "TYPESAFE_API_KEY in the environment", "jev-config": "the jev CLI config (~/.config/jev/config.json)", "login-shell": "your login shell", none: "nowhere" };
+  const keyAction = async (fn: () => Promise<RoutingStatus>) => {
+    setKeyBusy(true);
+    setKeyError(null);
+    setTest(null);
+    try {
+      setRouting(await fn());
+      setKeyDraft("");
+    } catch (err) {
+      setKeyError((err as Error).message);
+    } finally {
+      setKeyBusy(false);
+    }
+  };
+  const runTest = async () => {
+    setTest("running");
+    try {
+      setTest(await bridge.invoke("routing:test", undefined));
+    } catch (err) {
+      setTest({ ok: false, message: (err as Error).message, transport: "none", ms: 0 });
+    }
+  };
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -79,12 +105,54 @@ export function SettingsDialog({ settings, onSave, onClose }: Props) {
         </div>
         <h3 className="section-title">Auto routing</h3>
         <p className="routing-status" data-testid="routing-status">
-          {routing === null ? "Checking the judge…" : routing.live ? <span className="ok">Jev is live ({routing.model}, key from {routing.keySource === "env" ? "the environment" : "your login shell"}).</span> : <span className="warn">{routing.detail ?? "Jev is not available."} Auto uses the built-in heuristic{routing.keySource === "none" ? " — export TYPESAFE_API_KEY in your shell profile to route with Jev" : ""}.</span>}
+          {routing === null ? "Checking the judge…" : routing.live ? (
+            <span className="ok">
+              Jev configured — {routing.transport.kind === "cli" ? `via the jev CLI ${routing.transport.version ?? ""} (${routing.transport.bin})` : "via Modex's own HTTPS call"}
+              {routing.keyLast4 ? `, key ****${routing.keyLast4} from ${sourceLabel[routing.keySource]}` : routing.keySource === "none" ? ", key left to the CLI" : ""}
+              {routing.keyRef ? ` (1Password ${routing.keyRef})` : ""}.
+            </span>
+          ) : (
+            <span className="warn">{routing.detail ?? "Jev is not available."} Auto uses the built-in heuristic.</span>
+          )}
           {routing ? ` ${routing.fit.routes} auto turn${routing.fit.routes === 1 ? "" : "s"} so far` : ""}
           {routing && r.premium_turns_per_day != null ? ` · ${routing.fit.premiumToday}/${r.premium_turns_per_day} premium today` : ""}
           {learned.length ? ` · learned: ${learned.map(([k, t]) => `${k.replace(/_/g, " ")} ${t.offset > 0 ? "+" : ""}${t.offset}`).join(", ")}` : ""}
           {routing && routing.fit.routes > 0 ? <> · <button className="btn small ghost" onClick={() => void bridge.invoke("routing:reset", undefined).then(setRouting)}>Reset learning</button></> : null}
         </p>
+        <div className="key-row" data-testid="jev-key">
+          <label className="field grow">
+            <span>TypeSafe API key {routing?.secrets.present ? <em className="ok">· saved in {routing.secrets.backend}{routing.keySource === "modex" && routing.keyLast4 ? ` (****${routing.keyLast4})` : ""}</em> : null}</span>
+            <input type="password" autoComplete="off" value={keyDraft} placeholder={routing?.secrets.present ? "Saved — paste a new key to replace it" : "sk-… or op://Vault/Item/field"} onChange={(e) => setKeyDraft(e.target.value)} disabled={keyBusy || routing?.secrets.available === false} spellCheck={false} />
+            <small className={routing?.secrets.available === false ? "warn" : ""}>
+              {routing?.secrets.available === false
+                ? `${routing.secrets.backend} encryption is unavailable here — use TYPESAFE_API_KEY or \`jev config set apiKey …\` instead.`
+                : "Encrypted with the OS keychain and kept out of state.json and every build. A 1Password reference is expanded in memory at use time. Env, the jev CLI config, and your login shell are also checked, in that order after this."}
+            </small>
+            {keyError && <small className="warn">{keyError}</small>}
+          </label>
+          <div className="key-actions">
+            <button className="btn small primary" disabled={keyBusy || !keyDraft.trim()} onClick={() => void keyAction(() => bridge.invoke("routing:setKey", { key: keyDraft }))}>Save key</button>
+            <button className="btn small" disabled={keyBusy || !routing?.secrets.present} onClick={() => void keyAction(() => bridge.invoke("routing:clearKey", undefined))}>Clear</button>
+            <button className="btn small" disabled={keyBusy || test === "running"} onClick={() => void runTest()} title="Sends one tiny question through the active transport">Test judge</button>
+          </div>
+        </div>
+        {test && test !== "running" && <p className={`routing-test ${test.ok ? "ok" : "warn"}`} data-testid="routing-test">{test.ok ? "✓ " : "✗ "}{test.message}{test.status ? ` (HTTP ${test.status})` : ""} · {test.ms} ms</p>}
+        {test === "running" && <p className="routing-test">Asking Jev…</p>}
+        <div className="grid2">
+          <label className="field">
+            <span>Judge transport</span>
+            <select value={r.jev_transport} onChange={(e) => setR("jev_transport", e.target.value as RoutingPolicy["jev_transport"])}>
+              <option value="auto">Auto — jev CLI when installed, else HTTPS</option>
+              <option value="cli">Always the jev CLI</option>
+              <option value="http">Always Modex's HTTPS call</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>jev executable</span>
+            <input value={r.jev_bin} onChange={(e) => setR("jev_bin", e.target.value)} spellCheck={false} />
+            <small>{routing?.transport.kind === "cli" ? `found: ${routing.transport.bin} ${routing.transport.version ?? ""}` : "not found on PATH — npm link in TypeSafeAI/cli to install"}</small>
+          </label>
+        </div>
         <label className="check">
           <input type="checkbox" checked={r.auto_by_default} onChange={(e) => setR("auto_by_default", e.target.checked)} />
           <span>New threads start with Auto on</span>

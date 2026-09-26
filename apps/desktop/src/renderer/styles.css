@@ -282,3 +282,10 @@ kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1px sol
 .section-title { font-size: 13px; font-weight: 600; color: var(--fg-1); margin: 14px 0 6px; letter-spacing: .01em; }
 /* Settings grew with the Auto routing section; the dialog scrolls instead of overflowing a short window (CI runners). */
 .modal { max-height: calc(100vh - 72px); overflow-y: auto; }
+.key-row { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 8px; }
+.key-row .field.grow { flex: 1; }
+.key-row .field em { font-style: normal; font-weight: 500; }
+.key-row .field small.warn, .routing-test.warn { color: var(--warn); }
+.key-actions { display: flex; flex-direction: column; gap: 6px; padding-top: 22px; }
+.routing-test { font-size: 12px; margin: 0 0 8px; color: var(--fg-2); }
+.routing-test.ok { color: var(--ok, #7ddc9a); }

@@ -26,11 +26,39 @@ The state sent is the request (clipped to 4k chars), the last six turns as short
 (user/assistant text clipped, tool titles), and thread/project facts (backend, mode, plan,
 turn count, project name, branch). No file contents, diffs, or tool output are sent.
 
-Jev is contacted over HTTPS (`POST https://api.typesafe.ai/v1/systemone`) with the key in
-`TYPESAFE_API_KEY`. Modex reads that variable from its own environment or, because a
-Finder-launched app inherits no shell profile, from your login shell once at first use. The
-key is never written to disk by Modex. With no key, Auto still works using a deterministic
-built-in heuristic, and every receipt says so ("heuristic" instead of "Jev 0.82").
+## Key and transport
+
+The key can live in any of these places; Modex checks them in this order and tells you
+which one won in Settings → Auto routing:
+
+1. **Modex itself** — paste it into Settings. It is encrypted with the OS keychain
+   (Electron `safeStorage`: macOS Keychain, Windows DPAPI, or the Linux keyring) and written
+   to `~/.modex/app/secrets.json` with mode 0600. It is never in `state.json`, never in a
+   build, and the renderer only ever sees the last four characters.
+2. `TYPESAFE_API_KEY` or `JEV_API_KEY` in Modex's environment.
+3. **The `jev` CLI's config**, `~/.config/jev/config.json` (`JEV_CONFIG` overrides), written
+   by `jev config set apiKey …` — one configuration for every tool on the machine.
+4. `TYPESAFE_API_KEY` from your login shell, because a Finder-launched app inherits no
+   profile.
+
+Any of those may hold a **1Password reference** (`op://Vault/Item/field`) instead of a
+literal key; Modex expands it in memory through `op read` at use time and reports a
+locked vault as the problem rather than silently judging with the heuristic.
+
+The judge itself is reached one of two ways (Settings → Judge transport):
+
+- **`jev` CLI** (default when installed): Modex runs `jev run - --raw` with the payload on
+  stdin and the resolved key in the child's environment only. That gives Modex the CLI's
+  config, its retries, its error messages, and `jev doctor`, and keeps one code path for
+  people, scripts, and agents. Install with `npm link` in `TypeSafeAI/cli`.
+- **Built-in HTTPS** (`POST https://api.typesafe.ai/v1/systemone`): the same request from
+  Modex's own process, used when the CLI is absent or the policy says so.
+
+"Test judge" sends one tiny question through whichever is active and shows the answer or
+the API's own error sentence (a `402` with no credits, a `401` for a rejected key). A
+rejection disables Jev for the session — no per-turn retry latency — until the key changes
+or a test succeeds. With no key and no CLI, Auto still works on the built-in heuristic and
+every receipt says so.
 
 Pricing and limits, from the TypeSafe model page at the time of writing: `jev-latest` →
 `jev-1.13.0`, charged per input token at $0.042 per million (output free), 32k tokens of

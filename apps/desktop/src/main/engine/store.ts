@@ -29,6 +29,8 @@ export function migrateRouting(raw: unknown): RoutingPolicy {
     min_confidence: num(r.min_confidence, 0, 1, d.min_confidence),
     premium_turns_per_day: r.premium_turns_per_day === null ? null : typeof r.premium_turns_per_day === "number" && r.premium_turns_per_day >= 0 ? Math.floor(r.premium_turns_per_day) : d.premium_turns_per_day,
     jev_model: typeof r.jev_model === "string" && r.jev_model.trim() ? r.jev_model.trim() : d.jev_model,
+    jev_transport: r.jev_transport === "auto" || r.jev_transport === "cli" || r.jev_transport === "http" ? r.jev_transport : d.jev_transport,
+    jev_bin: typeof r.jev_bin === "string" && r.jev_bin.trim() ? r.jev_bin.trim() : d.jev_bin,
   };
 }
 
