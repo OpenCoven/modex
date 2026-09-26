@@ -1,0 +1,16 @@
+# Modex
+
+> Unofficial community desktop for Codex and Claude Code CLIs, with worktrees, approvals, parallel threads, and optional Jev routing. Not an official vendor application.
+
+## Entry points
+
+- [README](https://github.com/TypeSafeAI/modex/blob/main/README.md)
+- [Developer and agent guide](https://github.com/TypeSafeAI/modex/blob/main/docs/discovery/README.md)
+- [Repository instructions](https://github.com/TypeSafeAI/modex/blob/main/AGENTS.md)
+- [Contributing](https://github.com/TypeSafeAI/modex/blob/main/CONTRIBUTING.md)
+- [Auto-routing contract](https://github.com/TypeSafeAI/modex/blob/main/docs/auto-routing.md)
+- [Screenshot reproduction](https://github.com/TypeSafeAI/modex/blob/main/docs/discovery/SCREENSHOTS.md)
+
+## Boundaries
+
+Use an isolated worktree and the repository's signing and CI requirements. Coding turns run through the CLIs; optional Jev routing is a separate feature. Do not weaken sandbox/approval behavior or launch live agents for documentation captures. This navigation is not execution authorization. Preserve source attribution and distinguish offline demonstrations from live results.

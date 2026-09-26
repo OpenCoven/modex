@@ -1,0 +1,18 @@
+{
+  "repository": "TypeSafeAI/modex",
+  "description": "Unofficial open desktop app for running Codex and Claude Code CLIs with parallel threads, worktrees, approvals, diffs, and optional Jev auto-routing.",
+  "topics": [
+    "coding-agents",
+    "codex",
+    "claude-code",
+    "electron",
+    "typescript",
+    "developer-tools",
+    "ai-agents",
+    "git-worktree",
+    "typesafe-ai",
+    "jev"
+  ],
+  "status": "proposed-not-applied",
+  "note": "Capability-focused discovery metadata. Committing this file does not itself change GitHub repository settings."
+}
