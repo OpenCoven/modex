@@ -1,4 +1,4 @@
-import { _electron as electron, type ElectronApplication, type Locator, type Page } from "@playwright/test";
+import { _electron as electron, expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -55,3 +55,25 @@ export const tid = (scope: Page | Locator, id: string): Locator => scope.locator
 /** Transcript items of one kind (`user`, `assistant`, `tool`, `approval`, `notice`, `thinking`, `route`). */
 export const items = (page: Page, kind?: string): Locator =>
   page.locator(kind ? `[data-testid="item"][data-item-kind="${kind}"]` : `[data-testid="item"]`);
+
+/**
+ * New chats are drafts until their first send, so a test that needs a real thread sends one:
+ * ⌘N (or ⇧⌘N for a worktree) → type → ⌘⏎, then stops the scripted turn once it has started.
+ * Returns the new thread's id; it is selected and idle.
+ */
+export async function createThread(page: Page, prompt: string, opts: { worktree?: boolean } = {}): Promise<string> {
+  await page.keyboard.press(opts.worktree ? "Meta+Shift+n" : "Meta+n");
+  await expect(tid(page, "draft-view")).toBeVisible();
+  if (opts.worktree) await expect(tid(page, "context-kind")).toHaveAttribute("data-kind", "worktree");
+  await expect(tid(page, "composer-input")).toBeFocused();
+  // fill, not type: this helper needs a thread, not keystroke realism (the main flow test types for real).
+  await tid(page, "composer-input").fill(prompt);
+  await page.keyboard.press("Meta+Enter");
+  // The draft gives way to the new, selected thread. (Counting rows would not do: "Show more" caps them at five.)
+  await expect(tid(page, "thread-view")).toBeVisible({ timeout: 15_000 });
+  await expect(tid(page, "draft-view")).toHaveCount(0);
+  await expect(items(page, "user").first()).toHaveText(prompt);
+  await page.keyboard.press("Meta+.");
+  await expect(tid(page, "thread-status")).toHaveAttribute("data-status", "idle");
+  return (await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-thread-id"))!;
+}

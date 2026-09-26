@@ -15,6 +15,8 @@ export interface ComposerContext {
   worktree?: { branch: string };
   /** The checkout's current branch, when it is a git repository. */
   branch?: string;
+  /** Drafts only: Local/Worktree is a choice, made before the thread (and its worktree) exists. */
+  onToggleWorktree?: () => void;
 }
 
 interface Props {
@@ -121,9 +123,15 @@ function ContextStrip({ context }: { context: ComposerContext }) {
   return (
     <div className="composer-context" data-testid="composer-context" title={context.cwd}>
       <span className="context-item" data-testid="context-project"><Icon name="folder" size={14} />{context.project}</span>
-      <span className="context-item" data-testid="context-kind" data-kind={context.worktree ? "worktree" : "local"}>
-        <Icon name={context.worktree ? "branch" : "laptop"} size={14} />{context.worktree ? "Worktree" : "Local"}
-      </span>
+      {context.onToggleWorktree ? (
+        <button className="context-item context-toggle" data-testid="context-kind" data-kind={context.worktree ? "worktree" : "local"} aria-pressed={Boolean(context.worktree)} title={context.worktree ? "Runs in a new git worktree. Click to run in the checkout" : "Runs in the project checkout. Click to use a new git worktree"} onClick={context.onToggleWorktree}>
+          <Icon name={context.worktree ? "branch" : "laptop"} size={14} />{context.worktree ? "Worktree" : "Local"}
+        </button>
+      ) : (
+        <span className="context-item" data-testid="context-kind" data-kind={context.worktree ? "worktree" : "local"}>
+          <Icon name={context.worktree ? "branch" : "laptop"} size={14} />{context.worktree ? "Worktree" : "Local"}
+        </span>
+      )}
       {branch && <span className="context-item" data-testid="context-branch"><Icon name="branch" size={14} />{branch}</span>}
     </div>
   );
