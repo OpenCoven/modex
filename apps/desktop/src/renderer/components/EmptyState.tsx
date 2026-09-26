@@ -1,3 +1,5 @@
+import { Kbd } from "./ui/Kbd";
+
 interface Props {
   hasProjects: boolean;
   onAddProject: () => void;
@@ -20,7 +22,7 @@ export function EmptyState({ hasProjects, onAddProject, onNewThread }: Props) {
           <li><b>Chat</b> — read-only, asks before every command or edit.</li>
           <li><b>Agent</b> — edits and runs commands inside the project; asks to leave it.</li>
           <li><b>Agent (full access)</b> — no sandbox, no prompts.</li>
-          <li><b>Plan</b> — read-only investigation that ends in a plan. <kbd>⌘N</kbd> new thread · <kbd>⌘⏎</kbd> send · <kbd>⇧⌘P</kbd> plan</li>
+          <li><b>Plan</b> — read-only investigation that ends in a plan. <Kbd>⌘N</Kbd> new thread · <Kbd>⌘⏎</Kbd> send · <Kbd>⇧⌘P</Kbd> plan</li>
         </ul>
       </div>
     </div>

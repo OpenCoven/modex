@@ -1,0 +1,83 @@
+/*
+ * Design tokens for the Codex-parity chat UI. Values marked "measured" were sampled from the 1× reference
+ * screenshots (see design/tokens.md for coordinates); "derived" values have no reference pixel and were
+ * chosen to sit between measured neighbours. Components should use these names; the short legacy names
+ * in styles.css (--bg-1, --fg-2, --line …) are aliases kept only until the phases that restyle their users.
+ */
+:root {
+  /* Surfaces */
+  --bg-window: #1b1b1c;          /* measured: titlebar, rail */
+  --bg-sidebar: #131315;         /* measured */
+  --bg-main: #0f0f11;            /* measured */
+  --bg-row-hover: #1a1a1c;       /* derived: between sidebar and selected row */
+  --bg-row-selected: #222224;    /* measured: selected project row */
+  --bg-composer: #262729;        /* measured */
+  --bg-composer-context: #151517;/* measured: project · Local · branch strip */
+  --bg-user-bubble: #1a1a1c;     /* measured */
+  --bg-elevated: #1f1f21;        /* derived: menus, dialogs, tool rows */
+  --bg-sunken: #0b0b0d;          /* derived: command output, diff wells */
+
+  /* Lines */
+  --border-pane: #2a2a2b;        /* measured: sidebar/main divider */
+  --border-rail: #1f1f21;        /* measured: rail/sidebar edge */
+  --border-composer: #2b2c2e;    /* measured */
+  --border-strong: #37373a;      /* derived: control outlines */
+  --rule: #1f1f21;               /* measured: rule under "Working for 7s" */
+
+  /* Text — brightest glyph-core pixel on each surface */
+  --text-1: #e3e4e6;             /* measured: headings, composer controls, send fill */
+  --text-2: #c4c5c6;             /* measured: sidebar thread and project rows */
+  --text-3: #757577;             /* measured: "Show more"; model effort ≈ #7f8082 */
+  --text-4: #5c5c5f;             /* measured: section labels ("Projects") */
+  --text-placeholder: #535455;   /* measured: "Do anything" */
+
+  /* Accents. Modex keeps its own blue for focus and progress; Codex's UI is otherwise monochrome. */
+  --accent: #7c9cff;
+  --accent-strong: #5b7cf6;
+  --accent-warn: #dc9258;        /* measured: "Full access" */
+  --ok: #4fc38a;
+  --warn: #e8b458;
+  --danger: #f06b6b;
+  --add: #3fb950;
+  --add-bg: rgba(63, 185, 80, 0.13);
+  --del: #f85149;
+  --del-bg: rgba(248, 81, 73, 0.13);
+
+  /* Type — sizes fitted by ink width in Electron's own font stack (design/tokens.md) */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-xs: 12px;               /* derived: badges, meta */
+  --text-sm: 13px;               /* measured: composer controls, context strip */
+  --text-md: 14px;               /* measured: body, sidebar rows, composer input */
+  --text-lg: 18px;               /* measured: sidebar title (600) */
+  --text-xl: 28px;               /* measured: empty-state heading (400) */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --leading: 1.5;
+
+  /* Radii */
+  --radius-sm: 6px;              /* derived: icon buttons, inline code */
+  --radius-row: 10px;            /* measured: selected sidebar row */
+  --radius-md: 12px;             /* derived: menus, cards */
+  --radius-composer: 20px;       /* measured ±2: composer box */
+  --radius-pill: 999px;
+
+  /* Spacing (4 px grid) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --tooltip-delay: 400ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --duration-fast: 0ms; --duration-base: 0ms; }
+}

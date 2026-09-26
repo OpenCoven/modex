@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { AppState, Thread } from "../../shared/types";
+import { IconButton } from "./ui/IconButton";
 
 interface Props {
   state: AppState;
@@ -41,9 +42,9 @@ export function Sidebar({ state, selected, onSelect, onAddProject, onNewThread, 
                 <span className="project-name" data-testid="project-name">{p.name}</span>
                 {running > 0 && <span className="badge live">{running}</span>}
                 <span className="spacer" />
-                <button className="icon" data-testid="project-new-thread" title="New thread (⌘N)" onClick={() => onNewThread(p.id)}>+</button>
-                <button className="icon" data-testid="project-new-worktree-thread" title="New thread in a git worktree (⇧⌘N)" onClick={() => onNewThread(p.id, true)}>⑂</button>
-                <button className="icon dim" data-testid="project-remove" title="Remove project" onClick={() => onRemoveProject(p.id)}>×</button>
+                <IconButton icon="plus" label="New thread" shortcut="⌘N" data-testid="project-new-thread" onClick={() => onNewThread(p.id)} />
+                <IconButton icon="branch" label="New thread in a git worktree" shortcut="⇧⌘N" data-testid="project-new-worktree-thread" onClick={() => onNewThread(p.id, true)} />
+                <IconButton icon="close" label="Remove project" reveal data-testid="project-remove" onClick={() => onRemoveProject(p.id)} />
               </header>
               {!isCollapsed && (
                 <ul className="threads">
@@ -53,7 +54,7 @@ export function Sidebar({ state, selected, onSelect, onAddProject, onNewThread, 
                       <StatusDot status={t.status} />
                       <span className="thread-title" data-testid="thread-row-title">{t.title}</span>
                       {t.worktree && <span className="tag" title={`worktree ${t.worktree.branch}`}>⑂</span>}
-                      <button className="icon dim del" data-testid="thread-delete" title="Delete thread" onClick={(e) => { e.stopPropagation(); onDeleteThread(t); }}>×</button>
+                      <IconButton icon="close" label="Delete thread" reveal data-testid="thread-delete" onClick={(e) => { e.stopPropagation(); onDeleteThread(t); }} />
                     </li>
                   ))}
                 </ul>

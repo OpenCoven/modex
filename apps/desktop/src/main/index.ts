@@ -133,8 +133,11 @@ function createWindow(): BrowserWindow {
     minWidth: 900,
     minHeight: 600,
     title: "Modex",
-    backgroundColor: "#0f1013",
+    backgroundColor: "#0f0f11", // --bg-main: no colour flash before the renderer paints
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    // e2e captures run at the 1786×1049 reference size; CI runners have smaller displays, and macOS
+    // otherwise clamps the window to the screen (1024×677 on the GitHub macOS runner).
+    enableLargerThanScreen: Boolean(process.env.MODEX_E2E),
     trafficLightPosition: { x: 14, y: 16 },
     show: false,
     webPreferences: { preload: path.join(here, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },

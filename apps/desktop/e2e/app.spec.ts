@@ -215,3 +215,72 @@ test("a key typed into Settings is kept encrypted outside state.json, reported m
   await expect(keyBox.getByRole("button", { name: "Clear" })).toBeDisabled();
   await tid(page, "settings").getByRole("button", { name: "Cancel" }).click();
 });
+
+test("primitives: the model Menu is keyboard-driven, and icon buttons are named, revealed on focus, and tooltipped", async () => {
+  await expect(tid(page, "settings")).toHaveCount(0);
+  // Its own thread, so the test also runs alone (-g).
+  await page.keyboard.press("Meta+n");
+  await expect(tid(page, "composer-input")).toBeFocused();
+  await expect(tid(page, "thread-status")).toHaveAttribute("data-status", "idle");
+
+  // Menu: opening moves focus to the selected option; the trigger reports it is expanded.
+  const picker = tid(page, "model-picker");
+  await picker.click();
+  await expect(picker).toHaveAttribute("aria-expanded", "true");
+  const option = tid(page, "model-option").first();
+  await expect(option).toBeFocused();
+  // Arrow keys stay inside the list (one mock model: wraps onto itself); End/Home too.
+  for (const key of ["ArrowDown", "ArrowUp", "End", "Home"]) {
+    await page.keyboard.press(key);
+    await expect(option).toBeFocused();
+  }
+  // Escape closes and hands focus back to the trigger.
+  await page.keyboard.press("Escape");
+  await expect(tid(page, "model-menu")).toHaveCount(0);
+  await expect(picker).toBeFocused();
+  await expect(picker).toHaveAttribute("aria-expanded", "false");
+  // Tab closes it too.
+  await picker.click();
+  await expect(option).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(tid(page, "model-menu")).toHaveCount(0);
+  // A press outside closes it; a press on the trigger toggles it rather than counting as outside.
+  await picker.click();
+  await expect(tid(page, "model-menu")).toBeVisible();
+  await tid(page, "transcript").click({ position: { x: 5, y: 5 } });
+  await expect(tid(page, "model-menu")).toHaveCount(0);
+  await picker.click();
+  await picker.click();
+  await expect(tid(page, "model-menu")).toHaveCount(0);
+  // Enter on an option picks it; a model without efforts closes the menu.
+  await picker.click();
+  await page.keyboard.press("Enter");
+  await expect(tid(page, "model-menu")).toHaveCount(0);
+  await expect(picker).toHaveText(/Scripted mock/);
+
+  // IconButton: an icon alone has no name, so every one carries an accessible label.
+  const head = tid(page, "project").first();
+  await expect(head.getByRole("button", { name: "New thread", exact: true })).toHaveAttribute("data-testid", "project-new-thread");
+  await expect(head.getByRole("button", { name: "New thread in a git worktree" })).toHaveAttribute("data-testid", "project-new-worktree-thread");
+  // Row actions are hidden until hover, but a keyboard user reaching one sees it, with its tooltip and shortcut.
+  const remove = tid(head, "project-remove");
+  await expect(remove).toHaveCSS("opacity", "0");
+  const newThread = tid(head, "project-new-thread");
+  await newThread.focus();
+  await page.keyboard.press("Tab"); // → worktree
+  await page.keyboard.press("Tab"); // → remove
+  await expect(remove).toBeFocused();
+  await expect(remove).toHaveCSS("opacity", "1");
+  const tip = page.getByRole("tooltip");
+  await expect(tip).toHaveText("Remove project");
+  await expect(remove).toHaveAttribute("aria-describedby", (await tip.getAttribute("id"))!);
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.getByRole("tooltip")).toHaveText(/New thread in a git worktree\s*⇧⌘N/);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  // Hover opens it after the delay.
+  await newThread.hover();
+  await expect(page.getByRole("tooltip")).toHaveText(/New thread\s*⌘N/);
+  await page.mouse.move(900, 500);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+});
