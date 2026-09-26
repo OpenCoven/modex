@@ -95,3 +95,13 @@ test("ClaudeBackend: abort kills the process and reports interrupted", async () 
   assert.equal(r.status, "interrupted");
   assert.equal(proc.killed, true);
 });
+
+test("ClaudeBackend.args passes reasoning effort and fast mode; models advertise the effort ladder", () => {
+  const base = { cwd: "/w", model: "haiku", plan: false, mode: "agent" as const };
+  const plain = ClaudeBackend.args(base).join(" ");
+  assert.ok(!plain.includes("--effort") && !plain.includes("--settings"));
+  const tuned = ClaudeBackend.args({ ...base, effort: "xhigh", fast: true });
+  assert.ok(tuned.join(" ").includes("--effort xhigh"));
+  assert.equal(tuned[tuned.indexOf("--settings") + 1], '{"fastMode":true}');
+  assert.deepEqual(ClaudeBackend.MODELS[0]!.efforts, ["low", "medium", "high", "xhigh", "max"]);
+});

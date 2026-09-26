@@ -258,3 +258,37 @@ kbd { font: 11px var(--mono); background: rgba(255,255,255,.08); border: 1px sol
 .location-path { color: var(--fg-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
 .location .btn.small, .location-branch, .location-kind { flex: none; }
 .location .btn.small { padding: 1px 8px; font-size: 12px; }
+
+/* Auto routing */
+.pill.auto { color: #ffd479; border-color: rgba(255, 212, 121, .45); }
+.btn.toggle.auto.on { border-color: #ffd479; color: #ffd479; background: rgba(255, 212, 121, .12); }
+.route { margin: 0 auto 8px; }
+.route-head { display: flex; align-items: center; gap: 10px; width: 100%; background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 4px 10px; cursor: pointer; text-align: left; color: var(--fg-2); font-size: 12.5px; }
+.route-head:hover { background: var(--bg-1); border-color: var(--line); }
+.route.open .route-head { color: var(--fg-1); }
+.route-icon { width: 18px; display: inline-flex; justify-content: center; color: #ffd479; }
+.route-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.route-label b { color: var(--fg-1); font-weight: 600; }
+.route-meta { margin-left: auto; flex: none; color: var(--fg-2); font-size: 11.5px; }
+.route.heuristic .route-meta { color: var(--warn); }
+.route-body { margin: 2px 0 6px 28px; padding: 0 0 0 24px; border-left: 2px solid var(--line-2); color: var(--fg-2); font-size: 12.5px; }
+.route-body li { margin: 2px 0; }
+.route-body li.dim { list-style: none; margin-left: -18px; opacity: .8; }
+.routing-status { font-size: 12px; color: var(--fg-2); margin: 0 0 10px; }
+.routing-status .ok { color: var(--ok, #7ddc9a); }
+.routing-status .warn { color: var(--warn); }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 6px 0; }
+.check input { margin: 0; }
+.section-title { font-size: 13px; font-weight: 600; color: var(--fg-1); margin: 14px 0 6px; letter-spacing: .01em; }
+/* Settings grew with the Auto routing section; the dialog scrolls instead of overflowing a short window (CI runners). */
+.modal { max-height: calc(100vh - 72px); overflow-y: auto; }
+.key-row { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 8px; }
+.key-row .field.grow { flex: 1; }
+.key-row .field em { font-style: normal; font-weight: 500; }
+.key-row .field small.warn, .routing-test.warn { color: var(--warn); }
+.key-actions { display: flex; flex-direction: column; gap: 6px; padding-top: 22px; }
+.routing-test { font-size: 12px; margin: 0 0 8px; color: var(--fg-2); }
+.routing-test.ok { color: var(--ok, #7ddc9a); }
+/* Grid cells may shrink below their content, so long fields never widen the dialog. */
+.grid2 > * { min-width: 0; }
+.field input, .field select { max-width: 100%; box-sizing: border-box; }

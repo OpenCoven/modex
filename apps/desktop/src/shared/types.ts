@@ -5,6 +5,9 @@ export type Mode = "chat" | "agent" | "full-access";
 export type BackendId = "claude" | "codex" | "mock";
 export type ThreadStatus = "idle" | "running" | "waiting" | "error";
 export type ApprovalAnswer = "yes" | "no" | "always";
+export type EffortLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+export const EFFORT_LEVELS: EffortLevel[] = ["minimal", "low", "medium", "high", "xhigh", "max"];
+export type RoutingPosture = "economy" | "balanced" | "quality";
 
 export interface Project {
   id: string;
@@ -28,8 +31,10 @@ export interface Thread {
   /** Plan mode: read-only investigation that ends in a plan instead of edits. */
   plan: boolean;
   model: string;
-  /** Reasoning effort for backends that support it (Codex). */
+  /** Reasoning effort (Codex `effort`, Claude `--effort`). */
   effort?: string;
+  /** Auto: Jev judges each request and Modex picks backend/model/effort/fast mode per turn. */
+  auto?: boolean;
   /** Backend resume handle: Claude session id or Codex thread id. */
   sessionHandle?: string;
   status: ThreadStatus;
@@ -42,7 +47,9 @@ export type ThreadItem =
   | { id: string; kind: "approval"; question: string; detail?: string; canAlways?: boolean; answer?: ApprovalAnswer; at: string }
   | { id: string; kind: "notice"; level: "info" | "warn" | "error"; text: string; at: string }
   /** Model reasoning: Codex reasoning summaries or Claude extended thinking. Collapsible in the UI. */
-  | { id: string; kind: "thinking"; text: string; status: "running" | "done"; durationMs?: number; at: string };
+  | { id: string; kind: "thinking"; text: string; status: "running" | "done"; durationMs?: number; at: string }
+  /** An Auto routing decision made before a turn: what was picked and why. */
+  | { id: string; kind: "route"; backend: BackendId; model: string; effort?: string; fast: boolean; source: "jev" | "heuristic"; task: string; confidence: number; complexity: number; pinned: boolean; reasons: string[]; durationMs: number; at: string };
 
 export type ThreadEvent =
   | { threadId: string; type: "item"; item: ThreadItem }
@@ -61,7 +68,84 @@ export interface Settings {
   codex_bin: string;
   /** Scripted engine for the offline demo/tests. */
   mock_script?: string;
+  /** Auto routing (Jev) policy and bounds. */
+  routing: RoutingPolicy;
 }
+
+/**
+ * How Auto turns Jev's judgments into a model choice. Jev only answers questions about the
+ * request; this policy — and the per-task offsets Modex learns from your overrides — decide.
+ */
+export interface RoutingPolicy {
+  /** New threads start with Auto on. */
+  auto_by_default: boolean;
+  /** Shifts every pick one tier down (economy) or up (quality). */
+  posture: RoutingPosture;
+  /** Backends Auto may move a thread to when `allow_backend_switch` is on. */
+  allow_backends: BackendId[];
+  /** Off by default: switching CLIs mid-thread drops that CLI's session context. */
+  allow_backend_switch: boolean;
+  /** Reasoning effort Auto may never exceed. */
+  max_effort: EffortLevel;
+  /** Let Auto use the CLI's fast mode for light, speed-sensitive turns. */
+  allow_fast: boolean;
+  /** Below this Jev confidence in the task kind, Auto keeps the thread's current model. */
+  min_confidence: number;
+  /** Daily cap on top-tier / xhigh+ turns Auto may spend; null = unlimited. */
+  premium_turns_per_day: number | null;
+  /** TypeSafe model id for the judge. */
+  jev_model: string;
+  /** How to reach Jev: the `jev` CLI when installed (auto), always the CLI, or Modex's own HTTPS call. */
+  jev_transport: "auto" | "cli" | "http";
+  /** Executable for the jev CLI; a plain name resolves on PATH. */
+  jev_bin: string;
+}
+
+export const DEFAULT_ROUTING: RoutingPolicy = {
+  auto_by_default: false,
+  posture: "balanced",
+  allow_backends: ["codex", "claude"],
+  allow_backend_switch: false,
+  max_effort: "xhigh",
+  allow_fast: true,
+  min_confidence: 0.6,
+  premium_turns_per_day: null,
+  jev_model: "jev-latest",
+  jev_transport: "auto",
+  jev_bin: "jev",
+};
+
+export type KeySource = "modex" | "env" | "jev-config" | "login-shell" | "none";
+
+/** Result of a judge ping from Settings → "Test judge". Never carries the key. */
+export interface RoutingTest {
+  ok: boolean;
+  message: string;
+  code?: string;
+  status?: number;
+  transport: "cli" | "http" | "none";
+  ms: number;
+}
+
+export interface RoutingStatus {
+  /** A judge is configured (key or CLI) and has not been rejected this session; otherwise the heuristic runs. */
+  live: boolean;
+  keySource: KeySource;
+  /** Last four characters of the resolved key, for telling keys apart. */
+  keyLast4: string | null;
+  /** The op:// reference the key came from, when it did. */
+  keyRef: string | null;
+  /** Why Jev is not being used this session (no key, locked 1Password, rejected key, no credits). */
+  detail?: string;
+  transport: { kind: "cli" | "http" | "none"; bin?: string; version?: string };
+  /** Modex's own encrypted store for a hand-entered key. */
+  secrets: { backend: string; available: boolean; present: boolean; savedAt: string | null };
+  model: string;
+  questionSetVersion: number;
+  fit: { tasks: Record<string, { offset: number; samples: number; overridesUp: number; overridesDown: number; failures: number }>; premiumToday: number; routes: number };
+}
+
+export type ThreadPatch = Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort" | "auto">>;
 
 export interface ModelInfo {
   id: string;
@@ -70,6 +154,9 @@ export interface ModelInfo {
   isDefault?: boolean;
   efforts?: string[];
   defaultEffort?: string;
+  /** Codex service tiers (e.g. "fast") the model offers. */
+  serviceTiers?: string[];
+  defaultServiceTier?: string;
 }
 
 export const BACKENDS: { id: BackendId; label: string; hint: string }[] = [
@@ -117,12 +204,19 @@ export interface BridgeCommands {
   "state:get": { req: undefined; res: AppState };
   "project:add": { req: { path?: string } | undefined; res: Project | null };
   "project:remove": { req: { projectId: string }; res: AppState };
-  "thread:create": { req: { projectId: string; worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId }; res: Thread };
+  "thread:create": { req: { projectId: string; worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean }; res: Thread };
   "thread:items": { req: { threadId: string }; res: ThreadItem[] };
   "thread:send": { req: { threadId: string; text: string }; res: { ok: boolean; error?: string } };
   "thread:stop": { req: { threadId: string }; res: void };
   "thread:answer": { req: { threadId: string; itemId: string; answer: ApprovalAnswer }; res: void };
-  "thread:update": { req: { threadId: string; patch: Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort">> }; res: Thread };
+  "thread:update": { req: { threadId: string; patch: ThreadPatch }; res: Thread };
+  "routing:status": { req: undefined; res: RoutingStatus };
+  "routing:reset": { req: undefined; res: RoutingStatus };
+  /** Stores a hand-entered key (or op:// reference) in the OS keychain; never in state.json. */
+  "routing:setKey": { req: { key: string }; res: RoutingStatus };
+  "routing:clearKey": { req: undefined; res: RoutingStatus };
+  /** One tiny judge request through the active transport. */
+  "routing:test": { req: undefined; res: RoutingTest };
   "models:list": { req: { backend: BackendId }; res: { models: ModelInfo[]; error?: string } };
   "backends:health": { req: undefined; res: Record<BackendId, { ok: boolean; detail: string }> };
   "thread:delete": { req: { threadId: string; removeWorktree?: boolean }; res: AppState };

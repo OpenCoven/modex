@@ -1,12 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ApprovalAnswer, BackendId, Mode, ModelInfo, Thread, ThreadEvent, ThreadItem, ThreadStatus } from "../../shared/types.js";
+import type { ApprovalAnswer, BackendId, Mode, ModelInfo, Thread, ThreadEvent, ThreadItem, ThreadPatch, ThreadStatus } from "../../shared/types.js";
 import { Store, newId } from "./store.js";
 import * as gitx from "./git.js";
 import type { Backend, TurnSink } from "./backends/types.js";
 import { ClaudeBackend } from "./backends/claude.js";
 import { CodexBackend } from "./backends/codex.js";
 import { MockBackend } from "./backends/mock.js";
+import { Router } from "./routing/router.js";
+import type { SecretStore } from "./secrets.js";
 
 interface Live {
   abort: AbortController | null;
@@ -23,6 +25,10 @@ export interface RunnerOptions {
   emit: (event: ThreadEvent) => void;
   /** Override backends (tests inject fakes). */
   backends?: Partial<Record<BackendId, Backend>>;
+  /** Override the Auto router (tests inject an offline one or a fake Jev transport). */
+  router?: Router;
+  /** Where a hand-entered TypeSafe key lives (OS keychain via Electron safeStorage). */
+  secrets?: SecretStore;
 }
 
 /**
@@ -33,6 +39,8 @@ export interface RunnerOptions {
 export class ThreadRunner {
   private readonly live = new Map<string, Live>();
   private readonly backends: Record<BackendId, Backend>;
+  /** Auto routing: judges a request (Jev or the offline heuristic) and picks model/effort/fast per turn. */
+  readonly router: Router;
 
   constructor(private readonly o: RunnerOptions) {
     const s = () => o.store.settings;
@@ -41,6 +49,7 @@ export class ThreadRunner {
       codex: o.backends?.codex ?? new CodexBackend(s().codex_bin),
       mock: o.backends?.mock ?? new MockBackend(() => s().mock_script, o.home),
     };
+    this.router = o.router ?? new Router({ home: o.home, policy: () => s().routing, listModels: (b) => this.listModels(b), secrets: o.secrets });
   }
 
   backend(id: BackendId): Backend {
@@ -77,7 +86,7 @@ export class ThreadRunner {
     return this.slot(threadId).status;
   }
 
-  async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId } = {}): Promise<Thread> {
+  async createThread(projectId: string, opts: { worktree?: boolean; mode?: Mode; model?: string; backend?: BackendId; auto?: boolean } = {}): Promise<Thread> {
     const project = this.o.store.project(projectId);
     if (!project) throw new Error(`unknown project ${projectId}`);
     const settings = this.o.store.settings;
@@ -102,6 +111,7 @@ export class ThreadRunner {
       id, projectId, title: "New thread", createdAt: now, updatedAt: now, cwd, worktree,
       backend, mode: opts.mode ?? settings.default_mode, plan: false,
       model: opts.model ?? settings.default_model[backend] ?? "", status: "idle",
+      auto: opts.auto ?? settings.routing.auto_by_default,
     };
     this.o.store.addThread(thread);
     return thread;
@@ -124,7 +134,7 @@ export class ThreadRunner {
 
   /** Runs one user turn. Resolves when the thread is idle again (or errored). */
   async send(threadId: string, text: string): Promise<void> {
-    const thread = this.o.store.thread(threadId);
+    let thread = this.o.store.thread(threadId);
     if (!thread) throw new Error(`unknown thread ${threadId}`);
     const l = this.slot(threadId);
     if (l.status === "running" || l.status === "waiting") throw new Error("This thread is still working. Stop it or wait for it to finish.");
@@ -136,16 +146,41 @@ export class ThreadRunner {
     const abort = new AbortController();
     l.abort = abort;
     l.streaming = null;
-    const backend = this.backends[thread.backend];
     const sink = this.sinkFor(threadId, l);
     this.setStatus(threadId, "running");
+    let fast = false;
+    const auto = Boolean(thread.auto);
+    if (auto) {
+      // Auto: judge the request, then re-read the thread — the pick is applied as a thread update
+      // so the composer, header, and persisted state all show what this turn runs on.
+      try {
+        const project = this.o.store.project(thread.projectId);
+        const receipt = await this.router.route({ thread, text, items: l.items.slice(0, -1), project: { name: project?.name ?? "", branch: thread.worktree?.branch ?? null } }, abort.signal);
+        this.addItem(threadId, receipt.item);
+        const d = receipt.decision;
+        if (d.backend !== thread.backend) this.updateThread(threadId, { backend: d.backend, model: d.model, effort: d.effort }, { fromRouter: true });
+        else if (d.model !== thread.model || d.effort !== thread.effort) this.updateThread(threadId, { model: d.model, effort: d.effort }, { fromRouter: true });
+        fast = d.fast;
+        thread = this.o.store.thread(threadId) ?? thread;
+      } catch (err) {
+        this.addItem(threadId, { id: newId(), kind: "notice", level: "warn", text: `Auto routing failed (${(err as Error).message}); using the thread's current model.`, at: new Date().toISOString() });
+      }
+    }
+    if (abort.signal.aborted) {
+      this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: "Stopped.", at: new Date().toISOString() });
+      this.setStatus(threadId, "idle");
+      l.abort = null;
+      return;
+    }
+    const backend = this.backends[thread.backend];
     try {
       const result = await backend.runTurn(
         text,
-        { cwd: thread.cwd, mode: thread.mode, plan: thread.plan, model: thread.model, effort: thread.effort, resume: thread.sessionHandle, addDirs: thread.worktree ? [] : [] },
+        { cwd: thread.cwd, mode: thread.mode, plan: thread.plan, model: thread.model, effort: thread.effort, fast, resume: thread.sessionHandle, addDirs: thread.worktree ? [] : [] },
         sink,
         abort.signal,
       );
+      if (auto) this.router.noteOutcome(threadId, result.status);
       if (result.status === "failed") {
         this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: result.error ?? "The turn failed.", at: new Date().toISOString() });
         this.setStatus(threadId, "error");
@@ -154,6 +189,7 @@ export class ThreadRunner {
         this.setStatus(threadId, "idle");
       }
     } catch (err) {
+      if (auto) this.router.noteOutcome(threadId, "failed");
       this.addItem(threadId, { id: newId(), kind: "notice", level: "error", text: (err as Error).message, at: new Date().toISOString() });
       this.setStatus(threadId, "error");
     } finally {
@@ -185,12 +221,21 @@ export class ThreadRunner {
     resolve(answer);
   }
 
-  updateThread(threadId: string, patch: Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort">>): Thread {
-    const current = this.o.store.thread(threadId);
+  updateThread(threadId: string, patch: ThreadPatch, opts: { fromRouter?: boolean } = {}): Thread {
+    // The store hands back its live object, so snapshot it before the write below mutates it.
+    const live = this.o.store.thread(threadId);
+    const current = live ? { ...live } : undefined;
     // Switching backend starts a fresh backend conversation; the transcript stays.
     const extra: Partial<Thread> = current && patch.backend && patch.backend !== current.backend ? { sessionHandle: undefined, model: this.o.store.settings.default_model[patch.backend] ?? "", effort: undefined } : {};
     const t = this.o.store.updateThread(threadId, { ...extra, ...patch });
     this.o.emit({ threadId, type: "thread", thread: t });
+    // A hand-picked model on an Auto thread is the strongest signal the fit gets: the user
+    // disagreed with the last pick. Only model changes count; effort tweaks stay within a tier.
+    if (!opts.fromRouter && current?.auto && patch.model && patch.model !== current.model && !patch.backend && this.slot(threadId).items.some((i) => i.kind === "route")) {
+      void this.router.noteOverride(current, patch.model).then((learned) => {
+        if (learned) this.addItem(threadId, { id: newId(), kind: "notice", level: "info", text: `Noted — for ${learned.task.replace(/_/g, " ")} you chose tier ${learned.to} over Auto's tier ${learned.from}. Auto will lean that way next time.`, at: new Date().toISOString() });
+      }).catch(() => {});
+    }
     return t;
   }
 

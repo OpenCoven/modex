@@ -31,4 +31,7 @@ test("migrateSettings accepts the pre-0.3 API-era settings shape", async () => {
   assert.equal(m.default_mode, "chat");
   assert.deepEqual(m.default_model, { codex: "", claude: "", mock: "mock" });
   assert.equal("provider" in m, false);
+  assert.deepEqual([m.routing.jev_transport, m.routing.jev_bin, m.routing.posture], ["auto", "jev", "balanced"]);
+  const r = migrateSettings({ routing: { jev_transport: "cli", jev_bin: " /opt/jev ", posture: "quality", premium_turns_per_day: 3.7, min_confidence: 2 } }).routing;
+  assert.deepEqual([r.jev_transport, r.jev_bin, r.posture, r.premium_turns_per_day, r.min_confidence], ["cli", "/opt/jev", "quality", 3, 0.6]);
 });

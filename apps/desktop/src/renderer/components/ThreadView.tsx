@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { BackendId, Mode, ModelInfo, Project, Thread, ThreadItem } from "../../shared/types";
+import type { BackendId, Mode, ModelInfo, Project, Thread, ThreadItem, ThreadPatch } from "../../shared/types";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
 
@@ -10,7 +10,7 @@ interface Props {
   onSend: (text: string) => void;
   onStop: () => void;
   onAnswer: (itemId: string, answer: "yes" | "no" | "always") => void;
-  onUpdate: (patch: Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort">>) => void;
+  onUpdate: (patch: ThreadPatch) => void;
   showChanges: boolean;
   onToggleChanges: () => void;
   changedCount: number;
@@ -59,6 +59,7 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
         </div>
         <div className="topbar-right no-drag">
           <span className={`pill backend ${thread.backend}`}>{thread.backend === "claude" ? "Claude" : thread.backend === "codex" ? "Codex" : "Mock"}{thread.model ? ` · ${thread.model}` : ""}</span>
+          {thread.auto && <span className="pill auto" title="Auto routing is on for this thread">⚡ Auto</span>}
           {thread.plan && <span className="pill plan">▤ Plan</span>}
           <span className={`pill status ${thread.status}`}>{label(thread.status)}</span>
           <button className={`btn small ${showChanges ? "active" : ""}`} onClick={onToggleChanges}>
@@ -98,6 +99,7 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
         plan={thread.plan}
         model={thread.model}
         effort={thread.effort}
+        auto={Boolean(thread.auto)}
         models={models}
         modelsError={modelsError}
         onBackend={(backend: BackendId) => onUpdate({ backend })}
@@ -105,6 +107,7 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
         onPlan={(plan: boolean) => onUpdate({ plan })}
         onModel={(model: string) => onUpdate({ model })}
         onEffort={(effort) => onUpdate({ effort })}
+        onAuto={(auto) => onUpdate({ auto })}
         onSend={onSend}
         onStop={onStop}
         inputRef={inputRef}
@@ -148,7 +151,34 @@ function Item({ item, onAnswer }: { item: ThreadItem; onAnswer: Props["onAnswer"
       return <div className={`notice ${item.level}`}>{item.text}</div>;
     case "thinking":
       return <ThinkingItem item={item} />;
+    case "route":
+      return <RouteItem item={item} />;
   }
+}
+
+/** One Auto decision: what runs this turn, and — expanded — the judge's reasons. */
+function RouteItem({ item }: { item: Extract<ThreadItem, { kind: "route" }> }) {
+  const [open, setOpen] = useState(false);
+  const backend = item.backend === "claude" ? "Claude" : item.backend === "codex" ? "Codex" : "Mock";
+  const extras = [item.effort, item.fast ? "fast" : null].filter(Boolean).join(" · ");
+  return (
+    <div className={`route ${item.source} ${open ? "open" : ""}`}>
+      <button className="route-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <span className="route-icon">⚡</span>
+        <span className="route-label">
+          {item.pinned ? "Auto kept" : "Auto picked"} <b>{backend} · {item.model}</b>{extras ? ` · ${extras}` : ""}
+        </span>
+        <span className="route-meta">{item.task.replace(/_/g, " ")} · {item.source === "jev" ? `Jev ${item.confidence.toFixed(2)}` : "heuristic"}</span>
+        <span className="chev">{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <ul className="route-body">
+          {item.reasons.map((r, i) => <li key={i}>{r}</li>)}
+          <li className="dim">Judged in {item.durationMs} ms · complexity {item.complexity}/3 · task confidence {item.confidence.toFixed(2)}</li>
+        </ul>
+      )}
+    </div>
+  );
 }
 
 /** Collapsible reasoning: open while the model is still thinking, folded to one line once done. */

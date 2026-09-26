@@ -1,6 +1,6 @@
 {
   "name": "@modex/desktop",
-  "version": "0.3.0",
+  "version": "0.0.1",
   "description": "Modex desktop \u2014 a Codex-App-style GUI: projects, parallel agent threads, worktrees, inline approvals, and a live Changes panel.",
   "license": "MIT",
   "private": true,
@@ -15,19 +15,64 @@
     "start": "electron .",
     "dev": "vite",
     "screenshot": "electron . --demo --screenshot",
-    "test:e2e": "npm run build && playwright test"
+    "test:e2e": "npm run build && playwright test",
+    "dist": "npm run build && electron-builder --mac --arm64 --publish never"
   },
   "dependencies": {
     "@modex/core": "0.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.1.1",
     "electron": "^44.4.5",
+    "electron-builder": "26.15.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "vite": "^8.3.1",
-    "@playwright/test": "^1.63.0"
+    "vite": "^8.3.1"
+  },
+  "productName": "Modex",
+  "author": "TypeSafeAI",
+  "build": {
+    "appId": "ai.typesafe.modex",
+    "productName": "Modex",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/src/main/**",
+      "dist/src/shared/**",
+      "dist/renderer/**",
+      "demo/**",
+      "package.json"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "Modex ${version}"
+    },
+    "artifactName": "Modex-${version}-${arch}.${ext}",
+    "electronVersion": "44.4.5",
+    "npmRebuild": false
   }
 }

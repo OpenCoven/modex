@@ -6,7 +6,7 @@ import { Store } from "../src/main/engine/store.js";
 import { ThreadRunner } from "../src/main/engine/runner.js";
 import { MockBackend } from "../src/main/engine/backends/mock.js";
 import type { Backend, TurnOptions, TurnResult, TurnSink } from "../src/main/engine/backends/types.js";
-import type { ThreadEvent, ThreadItem } from "../src/shared/types.js";
+import type { Thread, ThreadEvent, ThreadItem } from "../src/shared/types.js";
 import { MockProvider, type MockStep } from "@modex/core";
 import { gitRepo, tmpdir, writeScript } from "./helpers.js";
 
@@ -273,3 +273,56 @@ async function waitFor<T>(fn: () => T | undefined, ms = 3000): Promise<T> {
     await new Promise((r) => setTimeout(r, 10));
   }
 }
+
+test("Auto threads: a route item lands before the turn, the pick is applied, and a hand-picked model teaches the fit", async () => {
+  const h = harness();
+  const project = h.store.addProject(gitRepo());
+  const seen: TurnOptions[] = [];
+  const two: Backend = {
+    id: "mock",
+    listModels: async () => [{ id: "mini", label: "Mini", description: "fastest", efforts: ["low", "high"] }, { id: "big", label: "Big", efforts: ["low", "high"] }],
+    dispose: async () => {},
+    async runTurn(_t, o, sink) { seen.push(o); sink.session("s1"); sink.assistant("ok"); return { status: "completed" }; },
+  };
+  const { Router } = await import("../src/main/engine/routing/router.js");
+  const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => ({ models: await two.listModels() }), transport: null });
+  const runner = new ThreadRunner({ ...h, backends: { mock: two }, router });
+  const thread = await runner.createThread(project.id, { mode: "agent", auto: true });
+  assert.equal(thread.auto, true);
+  await runner.send(thread.id, "quick: rename x to y in one file");
+  const items = runner.items(thread.id);
+  assert.deepEqual(items.map((i) => i.kind), ["user", "route", "assistant"]);
+  const route = items[1] as Extract<ThreadItem, { kind: "route" }>;
+  assert.deepEqual([route.source, route.model, route.task, route.fast], ["heuristic", "mini", "small_edit", false], "tier-0 pick, offline judge");
+  assert.equal(seen[0]!.model, "mini", "the backend ran on the routed model");
+  assert.equal(seen[0]!.effort, "low");
+  assert.equal(h.store.thread(thread.id)?.model, "mini", "the thread now shows the pick");
+  assert.ok(h.events.some((e) => e.type === "thread" && (e as { thread: Thread }).thread.model === "mini"), "renderer was told");
+  assert.equal(new Store(h.home).items(thread.id).length, 3, "the receipt persists");
+  const status = await router.status();
+  assert.deepEqual([status.live, status.fit.routes], [false, 1]);
+  // Picking a bigger model by hand after an Auto pick records an upward override and says so.
+  runner.updateThread(thread.id, { model: "big" });
+  const notice = await waitFor(() => runner.items(thread.id).find((i) => i.kind === "notice"));
+  assert.match((notice as { text: string }).text, /for small edit you chose tier 2 over Auto's tier 0/);
+  assert.equal((await router.status()).fit.tasks.small_edit!.overridesUp, 1);
+  // Auto off: no route item, the thread runs on whatever it has.
+  runner.updateThread(thread.id, { auto: false });
+  await runner.send(thread.id, "again");
+  assert.deepEqual(runner.items(thread.id).slice(-2).map((i) => i.kind), ["user", "assistant"]);
+  assert.equal(seen[1]!.model, "big");
+});
+
+test("Auto threads: a routing failure is a warning, not a lost turn", async () => {
+  const h = harness([{ content: "fine" }]);
+  const project = h.store.addProject(gitRepo());
+  const { Router } = await import("../src/main/engine/routing/router.js");
+  const router = new Router({ home: h.home, policy: () => h.store.settings.routing, listModels: async () => { throw new Error("no models"); }, transport: null });
+  const runner = new ThreadRunner({ ...h, router });
+  const thread = await runner.createThread(project.id, { auto: true });
+  await runner.send(thread.id, "hello");
+  const kinds = runner.items(thread.id).map((i) => i.kind);
+  assert.deepEqual(kinds, ["user", "notice", "assistant"]);
+  assert.match((runner.items(thread.id)[1] as { text: string }).text, /Auto routing failed \(no models\)/);
+  assert.equal(runner.status(thread.id), "idle");
+});

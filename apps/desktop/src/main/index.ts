@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, nativeTheme } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, nativeTheme, safeStorage } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +8,8 @@ import { ThreadRunner } from "./engine/runner.js";
 import * as gitx from "./engine/git.js";
 import { runDemo } from "./engine/demo.js";
 import { openTerminal } from "./engine/open-terminal.js";
+import { SecretStore, electronCipher, testCipher } from "./engine/secrets.js";
+import { hydratePath } from "./engine/shell-env.js";
 import type { BackendId, BridgeCommands, ThreadEvent } from "../shared/types.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -23,16 +25,33 @@ const screenshotDir = flag("screenshot");
 const home = demo ? fs.mkdtempSync(path.join(os.tmpdir(), "modex-demo-")) : process.env.MODEX_HOME ?? path.join(os.homedir(), ".modex");
 fs.mkdirSync(home, { recursive: true });
 
+// A Finder/Dock launch inherits launchd's minimal PATH, which hides claude, codex, and jev.
+// Resolve the user's login-shell PATH once, in the background, and make every channel that
+// spawns a CLI wait for it (see SPAWNS below) so the first turn never races it.
+const pathReady = hydratePath(process.env).then(
+  (r) => { if (r.via === "none") console.error("[modex] could not read the login-shell PATH; using", r.merged); return r; },
+  (err: Error) => { console.error("[modex] login-shell PATH failed:", err.message); return null; },
+);
+
+process.env.MODEX_VERSION ??= app.getVersion();
 const store = new Store(home);
 let win: BrowserWindow | null = null;
 const emit = (event: ThreadEvent): void => {
   win?.webContents.send("thread:event", event);
 };
-const runner = new ThreadRunner({ home, store, emit });
+// The e2e harness has no keychain to unlock; everything else goes through the OS keychain.
+const secrets = new SecretStore(home, process.env.MODEX_E2E ? testCipher : electronCipher(safeStorage));
+const runner = new ThreadRunner({ home, store, emit, secrets });
 
 type Handler<K extends keyof BridgeCommands> = (req: BridgeCommands[K]["req"]) => Promise<BridgeCommands[K]["res"]> | BridgeCommands[K]["res"];
+/** Channels that can start a CLI (claude, codex, jev, a project's worktree script). */
+const SPAWNS = new Set<keyof BridgeCommands>(["thread:create", "thread:send", "models:list", "backends:health", "routing:status", "routing:reset", "routing:setKey", "routing:clearKey", "routing:test"]);
+
 function handle<K extends keyof BridgeCommands>(channel: K, fn: Handler<K>): void {
-  ipcMain.handle(channel, (_e, req) => fn(req as BridgeCommands[K]["req"]));
+  ipcMain.handle(channel, async (_e, req) => {
+    if (SPAWNS.has(channel)) await pathReady;
+    return fn(req as BridgeCommands[K]["req"]);
+  });
 }
 
 function cwdFor(threadId: string): string {
@@ -56,7 +75,7 @@ handle("project:remove", ({ projectId }) => {
   store.removeProject(projectId);
   return store.snapshot();
 });
-handle("thread:create", ({ projectId, worktree, mode, model, backend }) => runner.createThread(projectId, { worktree, mode, model, backend }));
+handle("thread:create", ({ projectId, worktree, mode, model, backend, auto }) => runner.createThread(projectId, { worktree, mode, model, backend, auto }));
 handle("thread:items", ({ threadId }) => runner.items(threadId));
 handle("thread:send", async ({ threadId, text }) => {
   try {
@@ -84,6 +103,14 @@ handle("changes:revert", async ({ threadId, path: rel }) => {
 });
 handle("settings:update", (patch) => store.updateSettings(patch));
 handle("models:list", ({ backend }) => runner.listModels(backend));
+handle("routing:status", () => runner.router.status());
+handle("routing:reset", () => {
+  runner.router.fit.reset();
+  return runner.router.status();
+});
+handle("routing:setKey", ({ key }) => runner.router.setKey(key));
+handle("routing:clearKey", () => runner.router.clearKey());
+handle("routing:test", () => runner.router.test());
 handle("backends:health", async () => {
   const out = {} as Record<BackendId, { ok: boolean; detail: string }>;
   for (const id of ["claude", "codex", "mock"] as BackendId[]) {

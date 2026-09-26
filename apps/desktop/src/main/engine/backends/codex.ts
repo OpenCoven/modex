@@ -41,7 +41,7 @@ export class CodexBackend implements Backend {
         this.child = null;
         this.ready = null;
       });
-      this.request("initialize", { clientInfo: { name: "modex", title: "Modex", version: "0.3.0" }, capabilities: {} })
+      this.request("initialize", { clientInfo: { name: "modex", title: "Modex", version: process.env.MODEX_VERSION ?? "0.0.1" }, capabilities: {} })
         .then(() => {
           this.notify("initialized", {});
           resolve();
@@ -95,7 +95,11 @@ export class CodexBackend implements Backend {
     const res = await this.request<{ data: CodexModel[] }>("model/list", {});
     return res.data
       .filter((m) => !m.hidden)
-      .map((m) => ({ id: m.id, label: m.displayName || m.id, description: m.description, isDefault: m.isDefault, efforts: m.supportedReasoningEfforts?.map((e) => e.reasoningEffort), defaultEffort: m.defaultReasoningEffort }));
+      .map((m) => ({
+        id: m.id, label: m.displayName || m.id, description: m.description, isDefault: m.isDefault,
+        efforts: m.supportedReasoningEfforts?.map((e) => e.reasoningEffort), defaultEffort: m.defaultReasoningEffort,
+        serviceTiers: m.serviceTiers?.map((t) => t.id), defaultServiceTier: m.defaultServiceTier ?? undefined,
+      }));
   }
 
   async dispose(): Promise<void> {
@@ -258,6 +262,8 @@ export class CodexBackend implements Backend {
         sandboxPolicy: pol.sandboxPolicy,
         model: opts.model || null,
         effort: opts.effort ?? null,
+        // "fast" is the Codex fast-mode service tier; only this turn, the thread's tier is untouched.
+        serviceTierForTurn: opts.fast ? "fast" : null,
       })
         .then((r) => {
           turnId = r.turn.id;
@@ -310,6 +316,8 @@ interface CodexModel {
   isDefault: boolean;
   supportedReasoningEfforts?: { reasoningEffort: string }[];
   defaultReasoningEffort?: string;
+  serviceTiers?: { id: string; name?: string; description?: string }[];
+  defaultServiceTier?: string | null;
 }
 interface CodexItem {
   type: string;

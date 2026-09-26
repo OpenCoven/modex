@@ -24,6 +24,19 @@ modex/
   the CLI reports (`model/list` for Codex — every current GPT model with its reasoning-effort
   row; the `fable`/`opus`/`sonnet`/`haiku` latest aliases for Claude), default preselected, no
   free-text entry.
+- **⚡ Auto routing.** Turn on Auto and a fast judge — TypeSafe's Jev, or a built-in
+  heuristic when no key is configured — reads each request before the turn and picks
+  the model, reasoning effort, and fast mode within the bounds you set (posture, effort
+  ceiling, daily premium-turn budget, confidence floor). Every turn gets a one-line receipt
+  explaining the pick; picking a model by hand teaches Auto your preference for that kind of
+  task. The key is pasted into Settings (kept in the OS keychain, never in a build) or
+  shared with the [`jev` CLI](https://github.com/TypeSafeAI/cli), which Modex drives
+  directly when it is installed. The coding turn itself still runs only through the
+  CLIs. See [docs/auto-routing.md](docs/auto-routing.md).
+- **Launch from anywhere.** Opened from Finder or the Dock, Modex reads your login shell's
+  PATH once at startup (interactive `zsh -ilc`, falling back to `-lc`), so `claude`, `codex`,
+  and `jev` installed under nvm, Homebrew, or `~/.local/bin` are found exactly as in a terminal.
+  Set `MODEX_NO_LOGIN_PATH=1` to skip this.
 - **Projects & threads.** Open any local folder as a project. Each project holds threads;
   threads run **in parallel** and independently, each with its own backend, model, and mode.
 - **Worktree threads.** `⑂` starts a thread in a fresh `git worktree` so agents never step on

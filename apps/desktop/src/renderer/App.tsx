@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AppState, BackendId, ChangesSnapshot, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem } from "../shared/types";
+import type { AppState, BackendId, ChangesSnapshot, ModelInfo, Settings, Thread, ThreadEvent, ThreadItem, ThreadPatch } from "../shared/types";
 import { bridge } from "./bridge";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadView } from "./components/ThreadView";
@@ -109,7 +109,7 @@ export function App() {
   });
   const stop = () => thread && act(() => bridge.invoke("thread:stop", { threadId: thread.id }));
   const answer = (itemId: string, a: "yes" | "no" | "always") => thread && act(() => bridge.invoke("thread:answer", { threadId: thread.id, itemId, answer: a }));
-  const updateThread = (patch: Partial<Pick<Thread, "mode" | "model" | "title" | "backend" | "plan" | "effort">>) => thread && act(async () => {
+  const updateThread = (patch: ThreadPatch) => thread && act(async () => {
     await bridge.invoke("thread:update", { threadId: thread.id, patch });
     await refresh();
   });
