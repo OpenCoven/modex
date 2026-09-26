@@ -45,24 +45,33 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
   const busy = thread.status === "running" || thread.status === "waiting";
   // Follow new output only while the reader is at (or near) the bottom; scrolling up to read stops it.
   const stick = useRef(true);
+  // Where auto-scroll last put the view. Content can change (a ticking header, streamed text) before the
+  // browser delivers the reader's scroll event, so "has the reader moved it?" is read from the position
+  // itself: anything above this mark means they scrolled, and following waits until they are back down.
+  const autoTop = useRef(0);
+  const follow = useRef((el: HTMLDivElement) => {
+    if (el.scrollTop < autoTop.current - 2) stick.current = isNearBottom(el);
+    if (!stick.current) return;
+    el.scrollTop = el.scrollHeight;
+    autoTop.current = el.scrollTop;
+  }).current;
   const onScroll = () => {
     const el = scroller.current;
     if (el) stick.current = isNearBottom(el);
   };
   useEffect(() => {
     stick.current = true;
+    autoTop.current = 0;
   }, [thread.id]);
   // Output also grows without new items (streamed text, a pane opening and re-wrapping the prose):
   // keep following those while stuck to the bottom.
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const follow = () => {
-      if (stick.current) el.scrollTop = el.scrollHeight;
-    };
-    const resize = new ResizeObserver(follow);
+    const onChange = () => follow(el);
+    const resize = new ResizeObserver(onChange);
     resize.observe(el);
-    const mutate = new MutationObserver(follow);
+    const mutate = new MutationObserver(onChange);
     mutate.observe(el, { childList: true, subtree: true, characterData: true });
     return () => {
       resize.disconnect();
@@ -72,8 +81,11 @@ export function ThreadView({ thread, project, items, onSend, onStop, onAnswer, o
   useEffect(() => {
     const el = scroller.current;
     // The reader's own new message always brings the view down.
-    if (items.at(-1)?.kind === "user") stick.current = true;
-    if (el && stick.current) el.scrollTop = el.scrollHeight;
+    if (items.at(-1)?.kind === "user") {
+      stick.current = true;
+      autoTop.current = 0;
+    }
+    if (el) follow(el);
   }, [thread.id, items.length, items.at(-1)]);
   const turns = groupTurns(items);
   let lastUser = -1;
