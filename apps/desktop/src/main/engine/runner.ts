@@ -152,7 +152,7 @@ export class ThreadRunner {
       // so the composer, header, and persisted state all show what this turn runs on.
       try {
         const project = this.o.store.project(thread.projectId);
-        const receipt = await this.router.route({ thread, text, items: l.items, project: { name: project?.name ?? "", branch: thread.worktree?.branch ?? null } }, abort.signal);
+        const receipt = await this.router.route({ thread, text, items: l.items.slice(0, -1), project: { name: project?.name ?? "", branch: thread.worktree?.branch ?? null } }, abort.signal);
         this.addItem(threadId, receipt.item);
         const d = receipt.decision;
         if (d.backend !== thread.backend) this.updateThread(threadId, { backend: d.backend, model: d.model, effort: d.effort }, { fromRouter: true });
